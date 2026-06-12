@@ -1,0 +1,326 @@
+import {
+  addConversation,
+  addMemory,
+  closeImprovementSuggestion,
+  getJargon,
+  getImprovementSuggestions,
+  getMemories,
+  getRecentConversation,
+  upsertImprovementSuggestion,
+  upsertJargon
+} from "./db.js";
+import { getJarvisReply } from "./llm.js";
+import { classifyIntent } from "./intent.js";
+import { findRelevantMemories, extractAndStoreMemories, embedAndStoreMemory } from "./memory.js";
+import { buildSystemPrompt, buildCodeSystemPrompt } from "./prompts.js";
+import { formatAgenda, getCalendarAgenda, getNamedRange } from "./calendar.js";
+import fs from "node:fs";
+import path from "node:path";
+
+export type JarvisInputResult = {
+  reply: string;
+  shouldContinue: boolean;
+  intent?: string;
+};
+
+export async function handleJarvisInput(line: string, imageBase64?: string, windowContext?: string | null): Promise<JarvisInputResult> {
+  if (!line) {
+    return { reply: "", shouldContinue: true };
+  }
+
+  if (line === "/exit") {
+    return {
+      reply: "Bra. Stäng loopen innan den börjar låtsas vara en livsstil.",
+      shouldContinue: false
+    };
+  }
+
+  if (line.startsWith("/remember ")) {
+    const value = line.replace("/remember ", "").trim();
+    const id = addMemory(value);
+    embedAndStoreMemory(id, value).catch(() => {});
+    return { reply: "Sparat. Det där slipper du förklara igen.", shouldContinue: true };
+  }
+
+  if (line === "/memories") {
+    const memories = getMemories();
+    return {
+      reply: formatList("Jarvis minns", memories.map((memory) => memory.value)),
+      shouldContinue: true
+    };
+  }
+
+  const calendarRange = getCalendarRangeFromInput(line);
+  if (calendarRange) {
+    try {
+      const events = await getCalendarAgenda(calendarRange.start, calendarRange.end);
+      const reply = formatAgenda(events, calendarRange.label);
+      addConversation("user", line);
+      addConversation("assistant", reply);
+      return { reply, shouldContinue: true, intent: "chat" };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        reply: `Kalendern ar inte redo: ${message}`,
+        shouldContinue: true,
+        intent: "chat"
+      };
+    }
+  }
+
+  if (line === "/reflect") {
+    logRuntimeImprovementSuggestions();
+    return {
+      reply: buildReflectionReply(),
+      shouldContinue: true
+    };
+  }
+
+  if (line === "/improvements") {
+    return {
+      reply: formatImprovements(getImprovementSuggestions(8)),
+      shouldContinue: true
+    };
+  }
+
+  if (line.startsWith("/improve ")) {
+    const entry = line.replace("/improve ", "").trim();
+    const [title, rest] = entry.split("=").map((part) => part?.trim());
+    const [problem, proposal] = (rest || "").split("->").map((part) => part?.trim());
+
+    if (!title || !problem || !proposal) {
+      return {
+        reply:
+          "Formatet är `/improve titel = problem -> förslag`. Lite byråkrati, ja. Men ordning slår kaos med eyeliner.",
+        shouldContinue: true
+      };
+    }
+
+    upsertImprovementSuggestion(title, problem, proposal, 4, "jimmy");
+    return {
+      reply: "Inlagt i förbättringsbackloggen. Den där kan vi ge till Codex när det är dags att skruva.",
+      shouldContinue: true
+    };
+  }
+
+  if (line.startsWith("/done ")) {
+    const id = Number(line.replace("/done ", "").trim());
+
+    if (!Number.isInteger(id)) {
+      return { reply: "Ge mig ett id. `/done 3`. Inte poesi.", shouldContinue: true };
+    }
+
+    closeImprovementSuggestion(id);
+    return { reply: "Markerad som klar. Snyggt. En loop mindre som ligger och skaver.", shouldContinue: true };
+  }
+
+  if (line === "/handoff") {
+    logRuntimeImprovementSuggestions();
+    return {
+      reply: buildHandoffPrompt(),
+      shouldContinue: true
+    };
+  }
+
+  if (line.startsWith("/jargon ")) {
+    const entry = line.replace("/jargon ", "").trim();
+    const [phrase, meaning] = entry.split("=").map((part) => part?.trim());
+
+    if (!phrase || !meaning) {
+      return {
+        reply: "Formatet är `/jargon fras = betydelse`. Nära, men nej.",
+        shouldContinue: true
+      };
+    }
+
+    upsertJargon(phrase, meaning);
+    return {
+      reply: "Inlagt. Jag ska inte missbruka den. Jag är kaxig, inte desperat.",
+      shouldContinue: true
+    };
+  }
+
+  if (line === "/jargon") {
+    const jargon = getJargon();
+    return {
+      reply: formatList("Jarvis jargong", jargon.map((item) => `"${item.phrase}" = ${item.meaning}`)),
+      shouldContinue: true
+    };
+  }
+
+  addConversation("user", line);
+
+  try {
+    const [{ intent }, relevantMemories] = await Promise.all([
+      classifyIntent(line),
+      findRelevantMemories(line)
+    ]);
+    console.log(`[Jarvis intent] ${intent}, minnen: ${relevantMemories.length}`);
+
+    if (intent === "note") {
+      return handleNoteIntent(line);
+    }
+
+    const systemPrompt =
+      intent === "code"
+        ? buildCodeSystemPrompt(relevantMemories, getJargon(), windowContext)
+        : buildSystemPrompt(relevantMemories, getJargon(), getImprovementSuggestions(5), windowContext);
+
+    const reply = await getJarvisReply(systemPrompt, getRecentConversation(), imageBase64);
+    addConversation("assistant", reply);
+
+    extractAndStoreMemories(line, reply).catch(() => {});
+
+    return { reply, shouldContinue: true, intent };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    upsertImprovementSuggestion(
+      "Tydligare felhantering i Jarvis-svar",
+      `Jarvis fångade ett tekniskt fel och visade det nästan rått: ${message}`,
+      "Bygg ett felhanteringslager som skiljer på saknad konfiguration, nätverksfel, modellfel och interna buggar, och föreslår nästa steg.",
+      4,
+      "runtime-error"
+    );
+    return { reply: `Något small: ${message}`, shouldContinue: true };
+  }
+}
+
+function handleNoteIntent(line: string): JarvisInputResult {
+  addMemory(line);
+
+  const notesDir = process.env.JARVIS_NOTES_PATH;
+  if (notesDir) {
+    try {
+      fs.mkdirSync(notesDir, { recursive: true });
+      const date = new Date().toISOString().slice(0, 10);
+      const file = path.join(notesDir, `${date}.md`);
+      const timestamp = new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+      fs.appendFileSync(file, `\n- ${timestamp} ${line}\n`, "utf8");
+    } catch {
+      // spara i minnet räcker
+    }
+  }
+
+  addConversation("assistant", "Sparat.");
+  return { reply: "Sparat.", shouldContinue: true, intent: "note" };
+}
+
+function getCalendarRangeFromInput(line: string) {
+  const normalized = line.trim().toLowerCase();
+
+  if (normalized === "/today" || normalized === "/kalender idag" || normalized === "/calendar today") {
+    return getNamedRange("today");
+  }
+
+  if (normalized === "/tomorrow" || normalized === "/kalender imorgon" || normalized === "/calendar tomorrow") {
+    return getNamedRange("tomorrow");
+  }
+
+  if (normalized === "/calendar" || normalized === "/kalender" || normalized === "/agenda") {
+    return getNamedRange("upcoming");
+  }
+
+  const asksForCalendar =
+    normalized.includes("kalender") ||
+    normalized.includes("agenda") ||
+    normalized.includes("schema") ||
+    normalized.includes("vad hander") ||
+    normalized.includes("vad händer");
+
+  if (!asksForCalendar) {
+    return null;
+  }
+
+  if (normalized.includes("imorgon")) {
+    return getNamedRange("tomorrow");
+  }
+
+  if (normalized.includes("idag")) {
+    return getNamedRange("today");
+  }
+
+  return getNamedRange("upcoming");
+}
+
+function formatList(title: string, items: string[]) {
+  if (items.length === 0) {
+    return `${title}: tomt. Rent bord. Ovanligt vuxet.`;
+  }
+
+  return [`${title}:`, ...items.map((item) => `- ${item}`)].join("\n");
+}
+
+function logRuntimeImprovementSuggestions() {
+  if (!process.env.OPENAI_API_KEY) {
+    upsertImprovementSuggestion(
+      "Tydlig onboarding för scroll-knappens röstläge",
+      "Push-to-talk via scroll-knappen kräver OPENAI_API_KEY, men appen har ingen tydlig onboarding som säger exakt vad som saknas innan användaren testar.",
+      "Lägg till en statuspanel som visar om mikrofon, OpenAI-transkribering och Jarvis-modell är redo.",
+      5,
+      "runtime-reflection"
+    );
+  }
+
+  const provider = (process.env.JARVIS_PROVIDER || "auto").toLowerCase();
+  const isMock =
+    provider === "mock" ||
+    (provider === "auto" && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY);
+
+  if (isMock) {
+    upsertImprovementSuggestion(
+      "Synlig mock-mode varning",
+      "Jarvis kan köras i mock-läge och kännas levande, men då är hon inte kopplad till riktig modell. Det bör synas tydligt.",
+      "Visa en diskret men tydlig modellstatus i UI:t och låt Jarvis säga när hon bara kör mock.",
+      4,
+      "runtime-reflection"
+    );
+  }
+}
+
+function buildReflectionReply() {
+  const suggestions = getImprovementSuggestions(6);
+
+  return [
+    "Självdiagnos, utan att låtsas vara fulländad:",
+    "",
+    ...suggestions.map(
+      (item) =>
+        `#${item.id} ${item.title}\nBrister: ${item.problem}\nFörslag: ${item.proposal}`
+    ),
+    "",
+    "Min rekommendation: ta högsta prio först. Jag ska inte börja operera i min egen hjärna utan att du säger kör. Lite självbevarelsedrift har jag ändå."
+  ].join("\n");
+}
+
+function buildHandoffPrompt() {
+  const suggestions = getImprovementSuggestions(5);
+
+  if (suggestions.length === 0) {
+    return "Det finns inga öppna förbättringar. Misstänkt moget. Nästan obehagligt.";
+  }
+
+  return [
+    "Ge detta till Codex:",
+    "",
+    "Uppgift: förbättra Jarvis utifrån följande prioriterade backlog. Håll ändringar små, verifiera med npm run check och bygg om .exe med npm run dist:win.",
+    "",
+    ...suggestions.map(
+      (item) =>
+        `#${item.id} ${item.title}\nProblem: ${item.problem}\nFörslag: ${item.proposal}\nPrioritet: ${item.priority}`
+    )
+  ].join("\n");
+}
+
+function formatImprovements(items: ReturnType<typeof getImprovementSuggestions>) {
+  if (items.length === 0) {
+    return "Förbättringsbackloggen är tom. Antingen är jag perfekt, eller så har vi inte tittat tillräckligt noga. Jag vet vilket jag tror.";
+  }
+
+  return [
+    "Öppna förbättringar:",
+    ...items.map(
+      (item) =>
+        `#${item.id} [prio ${item.priority}] ${item.title}\nBrister: ${item.problem}\nFörslag: ${item.proposal}`
+    )
+  ].join("\n\n");
+}

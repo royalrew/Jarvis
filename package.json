@@ -1,0 +1,29 @@
+{
+  "name": "jarvis",
+  "version": "0.1.0",
+  "description": "Personal local-first AI presence for Windows.",
+  "author": "Jimmy",
+  "private": true,
+  "type": "module",
+  "main": "dist/electron.cjs",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "bot": "tsx src/bot.ts",
+    "start": "node dist/bot.js",
+    "desktop": "npm run build && node scripts/run-electron.mjs",
+    "check": "tsc --noEmit",
+    "build": "tsc && node scripts/copy-assets.mjs",
+    "dist:win": "npm run build && electron-builder --win dir --config electron-builder.json",
+    "dist:win:portable": "npm run build && electron-builder --win portable --config electron-builder.json"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

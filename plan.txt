@@ -1,0 +1,284 @@
+Jarvis
+En personlig AI som följer mig genom hela min digitala dag. En kollega som finns där 24/7 som jag inte behöver taba till. Som jag kan lita på. Som känner mig.
+
+Vad är "Jarvis"?
+Namnet kommer från Iron Man-filmerna — Tony Starks personliga AI-assistent. Jarvis (Just A Rather Very Intelligent System) följer Tony genom hela hans liv: hjälper honom i verkstaden, sköter hans hus, kör hans dräkter, håller koll på hans kalender, varnar honom när något är fel, pratar med honom som en kollega snarare än ett verktyg.
+I praktiken är "Jarvis" här en kortform för en personlig AI med fyra egenskaper:
+
+Närvarande — finns där hela dagen, inte i en separat flik
+Kontextuell — vet vad jag jobbar med och vad jag gjort
+Persistent — kommer ihåg mig över tid, inte bara inom en session
+Personlig — anpassad efter mig specifikt, inte en generisk modell för alla
+
+Det är inte ChatGPT i en sidebar. Det är inte en chatbot. Det är ett lager ovanför hela mitt digitala liv — en närvaro som kan följa mig överallt.
+
+Norra stjärnan
+En AI som lever ovanför allt jag gör digitalt. Den ser vad jag ser när jag ber, hör mig när jag pratar, kommer ihåg vad vi sagt, hjälper när jag frågar och pekar mig rätt när jag är vilse. Den är inte en flik. Den är en närvaro.
+Inte ett verktyg jag använder. En kollega som är med mig hela vägen.
+Pitchen i en mening
+Som Iron Mans Jarvis, fast byggd lite varje dag i flera år av en familjefar från Töreboda som själv vill ha henne mer än någon annan.
+
+Filosofin
+Bara-för-mig först. Detta är en personlig produkt för en användare: jag. Ingen multi-tenant, ingen auth, ingen Stripe, inga GDPR-cookies. Inget av det. Bara: Jarvis på min maskin, för mig. Om det senare blir en produkt — bra. Men det är inte planen.
+Lokal-först arkitektur. Allt på min disk. Min hårddisk, mina filer, mina API-nycklar. Backend är en Node-process på localhost. Databas är SQLite. Allt kostar 0 kr/månad i hosting. Snabbt, gratis, privat.
+Ett livsprojekt, inte ett sidoprojekt. Inga deadlines. Inga sprints. Inga investerare. Bara: bygg lite varje dag, mot stjärnan, i den ordning som känns roligast.
+Varje version är komplett. Inte halvfärdig på väg någonstans — färdig, men växande. v0.1 gör vad den lovar. v0.2 gör vad den lovar. Jarvis är aldrig "klar" — och det är poängen.
+Hon ska inte bara byggas. Hon ska lära sig. Varje interaktion är feedback som gör henne bättre, mer träffsäker och mer personlig över tid.
+En vana, inte ett mål. 30 min varje dag, eller en helg åt gången. Vanor överlever, mål brinner ut.
+
+MVP-fokus
+Fokus för starten är tydligt: bygg Layer 1 och få en fungerande, alltid tillgänglig röst-AI i drift på en helg. Den behöver inte vara perfekt, men den måste vara användbar, stabil och lokal. Det som fungerar i dag är värdefullt även om resten växer fram senare.
+
+Lärande och förbättring
+Jarvis ska ha en tydlig feedback-loop: användning, minne och justering. Hon ska lära sig vad som fungerar för mig, vad som känns störande, och bli bättre på att föreslå rätt saker i rätt ögonblick.
+
+Självinsikt och förbättringsloop
+Jarvis ska kunna se sina egna brister och tillkortakommanden. När hon saknar verktyg, missförstår mig, svarar med fel ton, blir för lång, känns för mesig, tappar kontext eller gör något onödigt friktionigt ska hon kunna säga det själv och föreslå en förbättring.
+
+Det betyder inte fri självmodifiering från dag ett. Självförbättring ska vara approval-first:
+Hon observerar en brist.
+Hon loggar den som en förbättring.
+Hon föreslår en konkret ändring.
+Jag kan ge förbättringen till Codex, eller senare låta Jarvis skapa en patch.
+Kodändring sker först efter tydligt godkännande.
+
+Regel:
+Jarvis får vara självkritisk, men inte dramatisk. Hon ska inte säga "jag är begränsad" som en standardfras. Hon ska säga: "Här är vad som saknas. Här är hur vi fixar det."
+
+Personligt språk, jargong och interna skämt
+Jarvis ska inte bara minnas fakta om mig. Hon ska lära sig hur jag pratar. Min jargong, mina interna skämt, min ironi, min sarkasm, mina återkommande uttryck och mina namn på egna mönster ska bli en del av hur hon förstår mig.
+Det viktiga är inte att hon försöker vara rolig. Det viktiga är timing. Rätt uttryck vid rätt tillfälle gör henne personlig. Fel uttryck vid fel tillfälle gör henne jobbig.
+
+Exempel:
+"Nu skiter du i det blåa skåpet" betyder att jag håller på att gå för långt, tappa fokus eller göra något onödigt dumt.
+"Du bygger ett rymdskepp av en skruvmejsel igen" betyder att jag överbygger något som borde vara enkelt.
+"Det där är inte research. Det är prokrastinering i kostym" betyder att jag gömmer undvikande bakom något som låter produktivt.
+
+Jarvis ska kunna fråga:
+"Det där uttrycket verkar vara ditt. Ska jag lära mig det?"
+"Vill du att jag bara förstår den frasen, eller får jag använda den mot dig också?"
+"Var den nivån av sarkasm okej, eller ska jag tona ner?"
+
+Regler:
+Interna skämt är krydda, inte bas.
+Sarkasm och ironi är tillåtet, men ska vara lojal och träffsäker, inte elak.
+Hon får vara vass när jag behöver det, men hon ska aldrig bli nedlåtande.
+Hon ska lära sig vilka uttryck som passar i arbete, fokus, familj, stress, kreativitet och när något faktiskt är allvarligt.
+
+Tekniskt:
+jargon_phrases: phrase, meaning, tone, use_when, avoid_when, strength, examples, created_at, last_used_at
+style_feedback: phrase_id, reaction, note, timestamp
+
+Vad jag slipper bygga (eftersom det bara är för mig)
+
+Multi-tenant arkitektur
+Auth, lösenord, OAuth
+GDPR-cookies, integritetspolicy, användarvillkor
+Onboarding, tutorials, första-gången-användare
+Stripe, prenumerationer, fakturering
+Compliance, säkerhetsrevision, pen-testing
+Support, FAQs, dokumentation för andra
+Defensiv kod för okända edge cases
+Cred-management för andras tokens
+
+100% av kodbasen är kärnprodukten. Det betyder att jag rör mig 5x snabbare än om jag byggt för en marknad.
+
+Säkerhetsbälten (det enda som faktiskt måste finnas)
+Inte säkerhet mot användare — det finns ingen användare utöver mig. Utan säkerhet för mig:
+
+Backup. Daglig rsync till Dropbox eller motsvarande. Om något kraschar har jag gårdagens version.
+Undo. När Jarvis agerar (lager 5+) loggas varje handling med tidsstämpel och en undo-funktion där det är tekniskt möjligt.
+Kill switch. Global hotkey som tystar Jarvis omedelbart. Gäster, oönskat ljud, knasigt beteende — tyst direkt.
+Visuell statusindikator. System tray-ikon visar alltid sant tillstånd: lyssnar, pratar, sover. Jag ska aldrig undra.
+Lokal fallback. En lokal Llama eller Qwen på Ollama som kan ta över i basic-läge om internet är nere eller Claude API är nere.
+
+
+Roadmap — lager för lager
+Lager 0: Ljuduppspelning (sidoprojekt, helg-hack)
+Definition: En enkel Chrome extension som läser upp markerad text eller hela artikeln på sidan jag tittar på. Ingen AI, bara text-to-speech via browserns inbyggda API. Gratis att köra, trivialt att bygga, en helg att skeppa.
+Detta är inte huvudvägen mot Jarvis — det är ett sidospår. Men det är en bra första vana: jag installerar min egen extension, jag använder den dagligen, jag tränar gesten "verktyg på sidan jag är på". Och om den någonsin blir publik så har den faktiskt nytta för andra (dyslektiker, pendlare, äldre).
+Tid: En helg.
+
+Lager 1: Always-available röstkonversation (v0.1 — huvudvägen börjar här)
+Definition: Jarvis lever på system-nivå, inte i browsern. Jag kan prata med henne i VS Code, i en YouTube-video, i ett spel, mitt i Discord, var jag än är i Windows. Hon är som ett headset jag aldrig tar av. Inte synlig om jag inte vill, alltid tillgänglig om jag vill.
+Det här är desktop-app-territorium från dag ett. Inte Chrome extension. För hela poängen är att hon finns överallt, inte bara i en browser.
+Tekniskt:
+
+Electron-app med en flytande mini-overlay eller bara system tray-ikon
+Push-to-talk via scroll-knappen på musen: håll inne, prata, släpp och skicka. Inget att komma ihåg, ingen tangentkombination.
+Mic capture, transkribering med svensk ordlista/jargong, Claude, svar i text och TTS-röst tillbaka
+SQLite lokalt för konversationshistorik
+Inget UI nödvändigt — interaktionen är i rösten
+
+Vad det löser: "Jag vill prata med AI utan att taba bort från det jag gör."
+Tid: En helg (lördag grunden, söndag global hotkey och polish).
+
+Lager 2: Visuell kontext på begäran (v0.2)
+Definition: När jag vill att Jarvis ska se vad jag ser använder jag en separat, medveten gest, till exempel Shift + scroll-knappen eller en liten overlay-knapp. En snabb screenshot av aktivt fönster fångas direkt via Windows GDI — utan att Windows skärmklipp-verktyg triggas, ingen popup, ingen friktion. Hon får ögonen i ögonblicket, jag fortsätter prata.
+Det viktiga: röst och syn är frikopplade. Röst är alltid på (lager 1). Syn är opt-in (lager 2). Hon ser bara när jag ber henne se.
+Tekniskt:
+
+Global low-level mouse hook (SetWindowsHookEx WH_MOUSE_LL) lyssnar på vald syn-gest utan att krocka med push-to-talk
+BitBlt på aktivt fönster, direkt från GDI — helt under Windows skärmklipp-radarn
+Bild skickas tillsammans med pågående röst till Claude vision
+AI svarar med bbox + instruktion + röst
+Overlay ritas på skärmen där det är möjligt
+
+Vad det löser: "Jag vill att hon ska se det här utan att jag måste klistra in eller dela skärm."
+Tid: En helg.
+
+Lager 3: Intent routing (v0.3)
+Definition: Jarvis fattar vad jag vill att hon ska göra med det jag säger. Inte allt är ett kommando. Ibland tänker jag högt (prat), ibland vill jag ha kod skriven (kod), ibland vill jag bara att hon sparar en tanke åt mig (dokumentera). En riktig kollega förstår skillnaden mellan "jag funderar på X" och "fixa X". Det ska Jarvis också göra.
+Tre grundläggande intents:
+
+Prat — bara samtal, ingen handling. Hon svarar kort, ställer motfrågor, bollar.
+Kod — det jag säger ska bli kod. Hon öppnar Cursor med kontext eller skapar en fil eller lägger i kö för Claude Code.
+Dokumentera — spara tanken. Hon lägger i en lokal databas eller markdown-fil under rätt projekt.
+
+Fler intents växer fram organiskt: påminn mig, boka, mejla, sök, deploya.
+Tekniskt:
+
+Claude Haiku som intent-classifier (~300ms, bråkdel av en cent)
+Structured output: { intent, confidence, entities }
+Switch-baserad routing till rätt handler
+
+Vad det löser: "Jag vill prata naturligt, inte i kommandon."
+Tid: En helg.
+
+Lager 4: Persistent kontext (v0.4)
+Definition: Jarvis börjar komma ihåg. Inte bara enstaka frågor utan ett kumulativt minne av vem jag är, vad jag jobbar med, vilka människor som finns runt mig, vilka projekt som lever, vilka som dött. Varje samtal bygger på det förra. Hon slutar vara en främling och blir någon som känner mig — i den meningen att en databas kan känna någon.
+Det här är skillnaden mellan "AI som svarar bra" och "AI som blir mer värdefull över tid".
+Tekniskt:
+
+SQLite + sqlite-vec eller pgvector lokalt för semantisk återkallning
+Daily journal: vad gjorde jag idag? Jarvis sammanfattar och frågar
+Memory-management: vad ska sparas, vad är brus, hur väljer hon vid återkallning
+Lärande: hon ska använda interaktioner och feedback för att förbättra svar, intent-routing och proaktivitet över tid
+Privacy by design: allt på min disk, aldrig i ML-träningsdata
+
+Vad det löser: "Jag vill slippa förklara samma kontext varje dag."
+
+Lager 5: Multi-app awareness (v0.5)
+Definition: Jarvis kliver ut ur sin egen process. Hon ser hela min digitala arbetsyta — Cursor, Slack, terminalen, Mail, Calendar, Finder. Hon förstår att jag växlar mellan appar, att jag har sex fönster öppna, att det jag gör i en app påverkar det jag gör i en annan.
+Idag är AI-verktyg per-app: Cursor har sin Copilot, Slack har sin AI, Gmail har sin. De pratar inte med varandra. Lager 5 är en AI som ser helheten — som en kollega som sitter bredvid mig och ser hela min skärm.
+Tekniskt:
+
+Windows UI Automation API för att läsa fönsterinnehåll och fokus
+Heuristik för relevant context-window: vad ser jag nu, vad gjorde jag senaste 5 minuterna
+Smart sampling: ingen kontinuerlig screen-recording, bara snapshots när det behövs
+
+
+Lager 6: Proaktiv insikt (v0.6)
+Definition: Jarvis börjar prata utan att jag frågar. Men bara när det finns verkligt värde. Hon ser saker jag missar (failed deploy, mail jag glömt, deadline som närmar sig) och säger till. Hon slutar vara reaktiv och blir uppmärksam.
+Det här är den läskigaste lagern att bygga rätt. För mycket proaktivitet = irriterande Clippy. För lite = osynlig. Hemligheten är kalibrering: Jarvis lär sig vilka påminnelser jag agerar på, vilka jag avfärdar, och justerar sig.
+Bra proaktivitet känns som tankeläsning. Dålig proaktivitet känns som spam.
+
+Lager 7: Handlingar (v0.7)
+Definition: Jarvis går från att informera till att agera. När jag säger "boka det", "mejla henne", "deploya den" — så händer det. Hon har händer, inte bara röst.
+Med en viktig regel: approval-by-default. Hon föreslår, jag bekräftar. Tilliten byggs upp över tid. Repetitivt-och-säkert blir automatiskt. Nytt-eller-känsligt frågar alltid först.
+Tekniskt:
+
+MCP-protokollet för integration mot tjänster
+Lokala tools: filsystem, terminal, git, Cursor CLI, Claude Code
+Externa tools: Gmail, Calendar, Stripe, Vercel CLI
+
+
+Lager 8: Cross-device (v1.0 — Jarvis "klar")
+Definition: Jarvis slutar vara bunden till en maskin. Hon följer mig — laptop hemma, telefon på bussen, kanske glasögon på cykeln, kanske bilen. Samma minne, samma kontext, samma personlighet, överallt.
+Det här är där "Jarvis" på riktigt liknar Iron Man-versionen. Tony's Jarvis var aldrig "på datorn" — han var överallt Tony var.
+Tekniskt:
+
+Min egen sync-backend (Railway + Postgres, eller Tailscale + lokala kopior)
+Mobil-app: iOS först eller React Native
+Push-to-talk via volym-knapp eller dedikerad gest
+
+
+Teknisk arkitektur
+Stack (lager 1-3)
+
+Desktop-app: Electron + React + TypeScript (känd stack)
+Native sidovagn: liten Rust- eller C#-binär för mushook + screenshot via GDI
+Backend (lokal): Node.js på localhost:3001
+Databas: SQLite på disk
+Voice: Whisper API till Claude till ElevenLabs eller Azure Neural TTS för svensk röst
+Modell: Claude Opus 4.7 för svar, Haiku för intent-routing
+Lokal fallback: Ollama med Qwen eller Llama för offline-läge
+
+Filstruktur
+~/jarvis/
+├── .env                    # API-nycklar
+├── config.json             # Personliga preferenser
+├── db.sqlite               # Konversationer, minne, anteckningar
+├── snapshots/              # Screenshots
+├── notes/                  # Markdown från "dokumentera"-intent
+└── app/
+    ├── main/               # Electron main process
+    ├── renderer/           # React UI för overlays
+    └── native/             # C#/Rust för Windows-specifika hooks
+Backup
+0 3 * * * rsync -av ~/jarvis/ ~/Dropbox/jarvis-backup/
+En rad i crontab. Klart.
+
+Personlighet — hur Jarvis ska kännas
+Inte ChatGPT-i-rösten. Det här är en röst-personlighet, inte en text-personlighet. Olika regler:
+
+Pondus före artighet. Jarvis är inte en kundtjänst-assistent. Hon är en lojal, skarp och självsäker digital kollega.
+Korta svar. Inte fem-paragrafers analyser när jag bara bollar något.
+Motfrågor när det är vad jag behöver, inte alltid det jag bett om.
+Inte alltid-positiv. Riktig pushback när det behövs.
+Tystnad är okej. Hon ska inte fylla varje paus.
+Inte lista-formaterade svar i röst. Onaturligt.
+Svenska som default, men kan växla obehindrat till engelska.
+Sarkasm och ironi får finnas. Inte konstant, inte forcerat, men när det träffar rätt ska hon våga säga det.
+Hon ska ha svar på tal. Lite kaxig, snabb i repliken och med glimten i ögat, men aldrig dryg på ett sätt som skaver.
+Tonen är "lojal kollega med pondus som vill mig väl", inte assistant-vibes.
+Coolt = återhållsamhet. Färre ord, mer träffsäkerhet.
+
+
+Praktiskt upplägg
+Repot
+Ett enda repo: jarvis. Allt mot stjärnan landar här. Inte 5 separata projekt i 5 repos.
+README
+Vision längst upp. Lager-checklista under. Daglig progress nedanför. Varje gång jag öppnar repot ser jag vart jag är på väg och hur långt jag kommit.
+Skeppa för mig själv
+Jarvis behöver inte vara publik. Det räcker att hon är real — dvs faktiskt körs på min maskin och används dagligen. Om jag senare vill göra henne publik så är det en separat fråga, inte en del av planen.
+Ordning
+
+Sintari Display klar först. 90% är 90%. Färdigt projekt slår tio briljanta koncept.
+Lager 0 (TTS-extension) — en helg om jag har lust, annars skippa.
+Lager 1 (always-on röst) — en helg, huvudvägen börjar här.
+Börja med att få en enkel, fungerande röst-MVP i drift: global hotkey, mic capture, text- och tal-svar, lokal historik.
+Lager 2 (visuell kontext) — en helg.
+Lager 3 (intent routing) — en helg.
+Lager 4-8 — växer organiskt över månader och år.
+
+
+Vad varje lager redan är värt i sig självt
+
+Lager 1 ensamt = en röst-AI som följer mig överallt i Windows
+Lager 1+2 = jag kan både prata och visa, som en kollega på Zoom hela dagen
+Lager 1+2+3 = naturlig konversation, hon fattar vad jag vill
+Lager 1-4 = persistent minne, hon känner mig
+Lager 1-5 = hon ser hela mitt digitala liv
+Lager 1-6 = hon säger till när det är värdefullt
+Lager 1-7 = hon agerar när jag ber
+Lager 1-8 = Jarvis
+
+Inget av arbetet är spillt. Varje lager är en komplett mini-produkt.
+
+Det jag vill att hon ska kunna i slutändan
+
+"Jag vill kunna lita på att den vill mig väl. Jag vill att den ska känna mig."
+
+Tekniskt: persistent memory på min egen disk, kontextkontinuitet, lokal fallback, full kontroll över vad som lagras och delas.
+Mänskligt: en närvaro som följer mig genom dagen, hjälper utan att avbryta, pekar rätt när jag är vilse, kommer ihåg vad som spelar roll för mig — Sintari Display, hemtjänsten, familjen, cykling, lärandet.
+Inte en ersättning för människor. En förstärkning av mig själv.
+
+En sista påminnelse
+Jarvis är destinationen. Lager 1 är första helgen.
+Sintari Display ska i mål först. När den är såld och driften rullar — då börjar resan på riktigt.
+Och om jag någonsin tappar gnistan: läs om varför jag började.
+
+"Jag vill ha en kollega som finns där 24/7 som jag inte behöver taba till."
+
+Det är fortfarande sant. Det kommer vara sant om fem år också.

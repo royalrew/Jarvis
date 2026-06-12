@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jarvis</title>
+    <link rel="stylesheet" href="./renderer.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>Jarvis</h1>
+          <p>Lokal v0.1 · pondus, jargong och minne</p>
+        </div>
+        <div class="top-actions">
+          <button class="ghost-button" id="voiceToggle" type="button" aria-pressed="false">Röst av</button>
+          <div class="status" id="status">redo</div>
+        </div>
+      </header>
+
+      <section class="messages" id="messages" aria-live="polite"></section>
+
+      <form class="composer" id="composer">
+        <textarea
+          id="input"
+          rows="2"
+          autocomplete="off"
+          spellcheck="true"
+          placeholder="Säg något. Jag sitter här och försöker se cool ut."
+        ></textarea>
+        <button class="send-button" type="submit">Skicka</button>
+      </form>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
