@@ -3,6 +3,15 @@ const composer = document.getElementById("composer");
 const input = document.getElementById("input");
 const status = document.getElementById("status");
 const voiceToggle = document.getElementById("voiceToggle");
+const chatTab = document.getElementById("chatTab");
+const calendarTab = document.getElementById("calendarTab");
+const chatView = document.getElementById("chatView");
+const calendarView = document.getElementById("calendarView");
+const calendarForm = document.getElementById("calendarForm");
+const calendarList = document.getElementById("calendarList");
+const refreshCalendar = document.getElementById("refreshCalendar");
+const eventDate = document.getElementById("eventDate");
+const eventStart = document.getElementById("eventStart");
 let speakReplies = localStorage.getItem("jarvis:speakReplies") !== "false";
 let micStream = null;
 let mediaRecorder = null;
@@ -19,6 +28,8 @@ addMessage(
 );
 
 syncVoiceButton();
+setDefaultCalendarInputs();
+loadCalendarEvents();
 
 window.jarvis.onFocusInput(() => {
   input.focus();
@@ -48,6 +59,47 @@ voiceToggle.addEventListener("click", () => {
     stopCurrentSpeech();
     status.textContent = "redo";
   }
+});
+
+chatTab.addEventListener("click", () => {
+  setActiveView("chat");
+});
+
+calendarTab.addEventListener("click", () => {
+  setActiveView("calendar");
+  loadCalendarEvents();
+});
+
+refreshCalendar.addEventListener("click", () => {
+  loadCalendarEvents();
+});
+
+calendarForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const form = new FormData(calendarForm);
+  const title = String(form.get("title") || "").trim();
+  const date = String(form.get("date") || "");
+  const start = String(form.get("start") || "");
+  const end = String(form.get("end") || "");
+  const location = String(form.get("location") || "").trim();
+  const notes = String(form.get("notes") || "").trim();
+
+  if (!title || !date || !start) {
+    return;
+  }
+
+  await window.jarvis.calendar.add({
+    title,
+    startsAt: new Date(`${date}T${start}:00`).toISOString(),
+    endsAt: end ? new Date(`${date}T${end}:00`).toISOString() : null,
+    location,
+    notes
+  });
+
+  calendarForm.reset();
+  setDefaultCalendarInputs();
+  await loadCalendarEvents();
 });
 
 composer.addEventListener("submit", async (event) => {
@@ -89,7 +141,7 @@ function addMessage(author, text, intent) {
 
   article.append(label, body);
   messages.append(article);
-  messages.scrollTop = messages.scrollHeight;
+  chatView.scrollTop = chatView.scrollHeight;
 }
 
 function renderContent(container, text) {
@@ -128,6 +180,9 @@ async function sendToJarvis(value) {
     if (result.reply) {
       addMessage("jarvis", result.reply, result.intent);
       speak(result.reply);
+      if (result.reply.includes("Inlagt i kalendern")) {
+        loadCalendarEvents();
+      }
     }
   } catch (error) {
     addMessage("jarvis", `Något small: ${error.message || String(error)}`);
@@ -137,6 +192,140 @@ async function sendToJarvis(value) {
     }
     input.focus();
   }
+}
+
+function setActiveView(view) {
+  const isCalendar = view === "calendar";
+  chatView.classList.toggle("active", !isCalendar);
+  calendarView.classList.toggle("active", isCalendar);
+  chatTab.classList.toggle("active", !isCalendar);
+  calendarTab.classList.toggle("active", isCalendar);
+  chatTab.setAttribute("aria-selected", String(!isCalendar));
+  calendarTab.setAttribute("aria-selected", String(isCalendar));
+}
+
+function setDefaultCalendarInputs() {
+  const now = new Date();
+  eventDate.value = now.toISOString().slice(0, 10);
+  const nextHour = new Date(now);
+  nextHour.setMinutes(0, 0, 0);
+  nextHour.setHours(nextHour.getHours() + 1);
+  eventStart.value = nextHour.toTimeString().slice(0, 5);
+}
+
+async function loadCalendarEvents() {
+  if (!window.jarvis?.calendar) {
+    return;
+  }
+
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 45);
+
+  try {
+    const events = await window.jarvis.calendar.list(start.toISOString(), end.toISOString());
+    renderCalendarEvents(events);
+  } catch (error) {
+    calendarList.innerHTML = "";
+    const empty = document.createElement("div");
+    empty.className = "calendar-empty";
+    empty.textContent = `Kalendern small: ${error.message || String(error)}`;
+    calendarList.append(empty);
+  }
+}
+
+function renderCalendarEvents(events) {
+  calendarList.innerHTML = "";
+
+  if (!events || events.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "calendar-empty";
+    empty.textContent = "Inga lokala händelser än.";
+    calendarList.append(empty);
+    return;
+  }
+
+  const grouped = groupEventsByDate(events);
+  for (const [dateKey, items] of grouped) {
+    const group = document.createElement("section");
+    group.className = "calendar-day";
+
+    const heading = document.createElement("h3");
+    heading.textContent = formatDateHeading(dateKey);
+    group.append(heading);
+
+    for (const event of items) {
+      group.append(renderCalendarEvent(event));
+    }
+
+    calendarList.append(group);
+  }
+}
+
+function renderCalendarEvent(event) {
+  const item = document.createElement("article");
+  item.className = "calendar-event";
+
+  const time = document.createElement("div");
+  time.className = "calendar-time";
+  time.textContent = formatEventTime(event);
+
+  const body = document.createElement("div");
+  body.className = "calendar-event-body";
+
+  const title = document.createElement("strong");
+  title.textContent = event.title;
+  body.append(title);
+
+  const metaParts = [event.location, event.source === "jarvis" ? "Jarvis" : "Manuell"].filter(Boolean);
+  if (metaParts.length > 0 || event.notes) {
+    const meta = document.createElement("span");
+    meta.textContent = [metaParts.join(" · "), event.notes].filter(Boolean).join(" — ");
+    body.append(meta);
+  }
+
+  const remove = document.createElement("button");
+  remove.className = "icon-button";
+  remove.type = "button";
+  remove.title = "Ta bort";
+  remove.textContent = "×";
+  remove.addEventListener("click", async () => {
+    await window.jarvis.calendar.delete(event.id);
+    await loadCalendarEvents();
+  });
+
+  item.append(time, body, remove);
+  return item;
+}
+
+function groupEventsByDate(events) {
+  const map = new Map();
+  for (const event of events) {
+    const key = new Date(event.startsAt).toISOString().slice(0, 10);
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+    map.get(key).push(event);
+  }
+  return map;
+}
+
+function formatDateHeading(dateKey) {
+  return new Date(`${dateKey}T12:00:00`).toLocaleDateString("sv-SE", {
+    weekday: "long",
+    day: "numeric",
+    month: "long"
+  });
+}
+
+function formatEventTime(event) {
+  const start = new Date(event.startsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+  if (!event.endsAt) {
+    return start;
+  }
+  const end = new Date(event.endsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+  return `${start}-${end}`;
 }
 
 async function startPushToTalk() {
@@ -234,7 +423,7 @@ function addDebugLine(text) {
   div.className = "debug-line";
   div.textContent = text;
   messages.append(div);
-  messages.scrollTop = messages.scrollHeight;
+  chatView.scrollTop = chatView.scrollHeight;
 }
 
 function playListeningBeep() {

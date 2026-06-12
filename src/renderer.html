@@ -14,12 +14,58 @@
           <p>Lokal v0.1 · pondus, jargong och minne</p>
         </div>
         <div class="top-actions">
+          <div class="view-switch" role="tablist" aria-label="Vy">
+            <button class="tab-button active" id="chatTab" type="button" role="tab" aria-selected="true">Chat</button>
+            <button class="tab-button" id="calendarTab" type="button" role="tab" aria-selected="false">Kalender</button>
+          </div>
           <button class="ghost-button" id="voiceToggle" type="button" aria-pressed="false">Röst av</button>
           <div class="status" id="status">redo</div>
         </div>
       </header>
 
-      <section class="messages" id="messages" aria-live="polite"></section>
+      <section class="messages view active" id="chatView" aria-live="polite">
+        <div id="messages"></div>
+      </section>
+
+      <section class="calendar-view view" id="calendarView" aria-label="Kalender">
+        <div class="calendar-shell">
+          <form class="calendar-form" id="calendarForm">
+            <div class="field wide">
+              <label for="eventTitle">Titel</label>
+              <input id="eventTitle" name="title" autocomplete="off" required placeholder="Ex. Möte med banken" />
+            </div>
+            <div class="field">
+              <label for="eventDate">Datum</label>
+              <input id="eventDate" name="date" type="date" required />
+            </div>
+            <div class="field">
+              <label for="eventStart">Start</label>
+              <input id="eventStart" name="start" type="time" required />
+            </div>
+            <div class="field">
+              <label for="eventEnd">Slut</label>
+              <input id="eventEnd" name="end" type="time" />
+            </div>
+            <div class="field">
+              <label for="eventLocation">Plats</label>
+              <input id="eventLocation" name="location" autocomplete="off" />
+            </div>
+            <div class="field wide">
+              <label for="eventNotes">Notering</label>
+              <input id="eventNotes" name="notes" autocomplete="off" />
+            </div>
+            <button class="calendar-add-button" type="submit">Lägg in</button>
+          </form>
+
+          <div class="calendar-board">
+            <div class="calendar-board-header">
+              <h2>Kommande</h2>
+              <button class="ghost-button compact" id="refreshCalendar" type="button">Uppdatera</button>
+            </div>
+            <div class="calendar-list" id="calendarList"></div>
+          </div>
+        </div>
+      </section>
 
       <form class="composer" id="composer">
         <textarea

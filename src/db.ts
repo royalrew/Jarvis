@@ -3,6 +3,7 @@ import type {
   ConversationMessage,
   ImprovementSuggestion,
   JargonPhrase,
+  LocalCalendarEvent,
   Memory,
   Role
 } from "./types.js";
@@ -57,6 +58,18 @@ export function initDb() {
       proposal TEXT NOT NULL,
       priority INTEGER NOT NULL DEFAULT 3,
       status TEXT NOT NULL DEFAULT 'open',
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      starts_at TEXT NOT NULL,
+      ends_at TEXT,
+      location TEXT,
+      notes TEXT,
       source TEXT NOT NULL DEFAULT 'manual',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -197,6 +210,62 @@ export function closeImprovementSuggestion(id: number, status = "done") {
      SET status = ?, updated_at = datetime('now')
      WHERE id = ?`
   ).run(status, id);
+}
+
+export function addCalendarEvent(input: {
+  title: string;
+  startsAt: string;
+  endsAt?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  source?: string;
+}) {
+  const result = db.prepare(
+    `INSERT INTO calendar_events (title, starts_at, ends_at, location, notes, source, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
+  ).run(
+    input.title,
+    input.startsAt,
+    input.endsAt ?? null,
+    input.location ?? null,
+    input.notes ?? null,
+    input.source ?? "manual"
+  );
+  return Number(result.lastInsertRowid);
+}
+
+export function getCalendarEvents(rangeStart?: string, rangeEnd?: string): LocalCalendarEvent[] {
+  const baseSelect = `
+    SELECT
+      id,
+      title,
+      starts_at as startsAt,
+      ends_at as endsAt,
+      location,
+      notes,
+      source,
+      created_at as createdAt,
+      updated_at as updatedAt
+    FROM calendar_events
+  `;
+
+  if (rangeStart && rangeEnd) {
+    return db.prepare(
+      `${baseSelect}
+       WHERE COALESCE(ends_at, starts_at) >= ? AND starts_at < ?
+       ORDER BY starts_at ASC`
+    ).all(rangeStart, rangeEnd) as LocalCalendarEvent[];
+  }
+
+  return db.prepare(
+    `${baseSelect}
+     ORDER BY starts_at ASC
+     LIMIT 100`
+  ).all() as LocalCalendarEvent[];
+}
+
+export function deleteCalendarEvent(id: number) {
+  db.prepare("DELETE FROM calendar_events WHERE id = ?").run(id);
 }
 
 function seedKnownImprovementSuggestions() {

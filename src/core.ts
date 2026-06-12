@@ -1,7 +1,9 @@
 import {
   addConversation,
+  addCalendarEvent,
   addMemory,
   closeImprovementSuggestion,
+  getCalendarEvents,
   getJargon,
   getImprovementSuggestions,
   getMemories,
@@ -50,11 +52,29 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
     };
   }
 
+  const calendarCreate = parseCalendarCreate(line);
+  if (calendarCreate) {
+    const id = addCalendarEvent({ ...calendarCreate, source: "jarvis" });
+    const reply = `Inlagt i kalendern: ${calendarCreate.title} ${formatCalendarCreateTime(calendarCreate.startsAt, calendarCreate.endsAt)}. Id #${id}.`;
+    addConversation("user", line);
+    addConversation("assistant", reply);
+    return { reply, shouldContinue: true, intent: "note" };
+  }
+
   const calendarRange = getCalendarRangeFromInput(line);
   if (calendarRange) {
     try {
-      const events = await getCalendarAgenda(calendarRange.start, calendarRange.end);
-      const reply = formatAgenda(events, calendarRange.label);
+      const [remoteEvents, localEvents] = await Promise.all([
+        getCalendarAgenda(calendarRange.start, calendarRange.end).catch(() => []),
+        Promise.resolve(getCalendarEvents(calendarRange.start.toISOString(), calendarRange.end.toISOString()))
+      ]);
+      const reply = formatAgenda([...remoteEvents, ...localEvents.map((event) => ({
+        title: event.title,
+        start: new Date(event.startsAt),
+        end: event.endsAt ? new Date(event.endsAt) : undefined,
+        location: event.location ?? undefined,
+        allDay: false
+      }))], calendarRange.label);
       addConversation("user", line);
       addConversation("assistant", reply);
       return { reply, shouldContinue: true, intent: "chat" };
@@ -240,6 +260,39 @@ function getCalendarRangeFromInput(line: string) {
   }
 
   return getNamedRange("upcoming");
+}
+
+function parseCalendarCreate(line: string) {
+  const trimmed = line.trim();
+  const match = trimmed.match(/^(?:\/addcal|\/kalender\s+lägg|lägg\s+(?:in\s+)?(?:i\s+)?kalendern?|boka)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?:-(\d{2}:\d{2}))?\s+(.+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const [, date, startTime, endTime, title] = match;
+  const startsAt = new Date(`${date}T${startTime}:00`);
+  if (Number.isNaN(startsAt.getTime())) {
+    return null;
+  }
+
+  const endsAt = endTime ? new Date(`${date}T${endTime}:00`) : null;
+  return {
+    title: title.trim(),
+    startsAt: startsAt.toISOString(),
+    endsAt: endsAt && !Number.isNaN(endsAt.getTime()) ? endsAt.toISOString() : null
+  };
+}
+
+function formatCalendarCreateTime(startsAt: string, endsAt?: string | null) {
+  const start = new Date(startsAt);
+  const date = start.toLocaleDateString("sv-SE");
+  const startTime = start.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+  if (!endsAt) {
+    return `${date} ${startTime}`;
+  }
+
+  const end = new Date(endsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
+  return `${date} ${startTime}-${end}`;
 }
 
 function formatList(title: string, items: string[]) {

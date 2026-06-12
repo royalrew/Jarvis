@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld("jarvis", {
     ipcRenderer.on("jarvis:ptt-stop", callback);
   },
   speak: (text) => ipcRenderer.invoke("jarvis:speak", text),
+  calendar: {
+    list: (rangeStart, rangeEnd) => ipcRenderer.invoke("jarvis:calendar:list", { rangeStart, rangeEnd }),
+    add: (event) => ipcRenderer.invoke("jarvis:calendar:add", event),
+    delete: (id) => ipcRenderer.invoke("jarvis:calendar:delete", id)
+  },
   onProactiveMessage: (callback) => {
     ipcRenderer.on("jarvis:proactive-message", (_event, message) => callback(message));
   }

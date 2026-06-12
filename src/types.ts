@@ -42,3 +42,15 @@ export type ImprovementSuggestion = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type LocalCalendarEvent = {
+  id: number;
+  title: string;
+  startsAt: string;
+  endsAt: string | null;
+  location: string | null;
+  notes: string | null;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+};

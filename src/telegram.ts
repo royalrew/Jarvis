@@ -215,6 +215,26 @@ async function sendTelegramVoice(chatId: number, voiceBuffer: Buffer, token: str
   });
 
   if (!response.ok) {
-    console.error(`[Telegram] sendVoice misslyckades: ${response.status}`, await response.text());
+    const body = await response.text();
+    console.error(`[Telegram] sendVoice misslyckades: ${response.status}`, body);
+    await sendTelegramAudio(chatId, voiceBuffer, token);
+  }
+}
+
+async function sendTelegramAudio(chatId: number, audioBuffer: Buffer, token: string) {
+  const formData = new FormData();
+  formData.append("chat_id", String(chatId));
+  formData.append("title", "Jarvis");
+
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: "audio/mpeg" });
+  formData.append("audio", blob, "jarvis-reply.mp3");
+
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendAudio`, {
+    method: "POST",
+    body: formData
+  });
+
+  if (!response.ok) {
+    console.error(`[Telegram] sendAudio misslyckades: ${response.status}`, await response.text());
   }
 }

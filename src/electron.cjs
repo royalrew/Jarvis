@@ -398,6 +398,32 @@ ipcMain.handle("jarvis:send", async (_event, input) => {
   return result;
 });
 
+ipcMain.handle("jarvis:calendar:list", async (_event, payload = {}) => {
+  await loadCore();
+  const db = await import("./db.js");
+  return db.getCalendarEvents(payload.rangeStart, payload.rangeEnd);
+});
+
+ipcMain.handle("jarvis:calendar:add", async (_event, payload = {}) => {
+  await loadCore();
+  const db = await import("./db.js");
+  return db.addCalendarEvent({
+    title: String(payload.title || "").trim(),
+    startsAt: String(payload.startsAt || ""),
+    endsAt: payload.endsAt ? String(payload.endsAt) : null,
+    location: payload.location ? String(payload.location).trim() : null,
+    notes: payload.notes ? String(payload.notes).trim() : null,
+    source: "manual"
+  });
+});
+
+ipcMain.handle("jarvis:calendar:delete", async (_event, id) => {
+  await loadCore();
+  const db = await import("./db.js");
+  db.deleteCalendarEvent(Number(id));
+  return true;
+});
+
 ipcMain.handle("jarvis:get-proactive", () => {
   const msg = pendingProactiveMessage;
   pendingProactiveMessage = null;
