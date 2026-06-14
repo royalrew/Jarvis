@@ -1,9 +1,7 @@
 import {
   addConversation,
-  addCalendarEvent,
   addMemory,
   closeImprovementSuggestion,
-  getCalendarEvents,
   getJargon,
   getImprovementSuggestions,
   getMemories,
@@ -11,6 +9,8 @@ import {
   upsertImprovementSuggestion,
   upsertJargon
 } from "./db.js";
+import { addCalendarEvent, getCalendarEvents } from "./calendarDb.js";
+import type { ImprovementSuggestion } from "./types.js";
 import { getJarvisReply } from "./llm.js";
 import { classifyIntent } from "./intent.js";
 import { findRelevantMemories, extractAndStoreMemories, embedAndStoreMemory } from "./memory.js";
@@ -40,7 +40,7 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
 
   if (line.startsWith("/remember ")) {
     const value = line.replace("/remember ", "").trim();
-    const id = addMemory(value);
+    const id = await addMemory(value);
     embedAndStoreMemory(id, value).catch(() => {});
     return { reply: "Sparat. Det där slipper du förklara igen.", shouldContinue: true };
   }
@@ -50,8 +50,8 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
     try {
       const reply = await handleTrainingCommand(trainingCommand);
       if (reply !== null) {
-        addConversation("user", line);
-        addConversation("assistant", reply);
+        await addConversation("user", line);
+        await addConversation("assistant", reply);
         return { reply, shouldContinue: true, intent: "training" };
       }
     } catch (error) {
@@ -65,7 +65,7 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
   }
 
   if (line === "/memories") {
-    const memories = getMemories();
+    const memories = await getMemories();
     return {
       reply: formatList("Jarvis minns", memories.map((memory) => memory.value)),
       shouldContinue: true
@@ -74,10 +74,10 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
 
   const calendarCreate = parseCalendarCreate(line);
   if (calendarCreate) {
-    const id = addCalendarEvent({ ...calendarCreate, source: "jarvis" });
+    const id = await addCalendarEvent({ ...calendarCreate, source: "jarvis" });
     const reply = `Inlagt i kalendern: ${calendarCreate.title} ${formatCalendarCreateTime(calendarCreate.startsAt, calendarCreate.endsAt)}. Id #${id}.`;
-    addConversation("user", line);
-    addConversation("assistant", reply);
+    await addConversation("user", line);
+    await addConversation("assistant", reply);
     return { reply, shouldContinue: true, intent: "note" };
   }
 
@@ -86,7 +86,7 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
     try {
       const [remoteEvents, localEvents] = await Promise.all([
         getCalendarAgenda(calendarRange.start, calendarRange.end).catch(() => []),
-        Promise.resolve(getCalendarEvents(calendarRange.start.toISOString(), calendarRange.end.toISOString()))
+        getCalendarEvents(calendarRange.start.toISOString(), calendarRange.end.toISOString())
       ]);
       const reply = formatAgenda([...remoteEvents, ...localEvents.map((event) => ({
         title: event.title,
@@ -95,8 +95,8 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
         location: event.location ?? undefined,
         allDay: false
       }))], calendarRange.label);
-      addConversation("user", line);
-      addConversation("assistant", reply);
+      await addConversation("user", line);
+      await addConversation("assistant", reply);
       return { reply, shouldContinue: true, intent: "chat" };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -109,16 +109,16 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
   }
 
   if (line === "/reflect") {
-    logRuntimeImprovementSuggestions();
+    await logRuntimeImprovementSuggestions();
     return {
-      reply: buildReflectionReply(),
+      reply: await buildReflectionReply(),
       shouldContinue: true
     };
   }
 
   if (line === "/improvements") {
     return {
-      reply: formatImprovements(getImprovementSuggestions(8)),
+      reply: formatImprovements(await getImprovementSuggestions(8)),
       shouldContinue: true
     };
   }
@@ -136,7 +136,7 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
       };
     }
 
-    upsertImprovementSuggestion(title, problem, proposal, 4, "jimmy");
+    await upsertImprovementSuggestion(title, problem, proposal, 4, "jimmy");
     return {
       reply: "Inlagt i förbättringsbackloggen. Den där kan vi ge till Codex när det är dags att skruva.",
       shouldContinue: true
@@ -150,14 +150,14 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
       return { reply: "Ge mig ett id. `/done 3`. Inte poesi.", shouldContinue: true };
     }
 
-    closeImprovementSuggestion(id);
+    await closeImprovementSuggestion(id);
     return { reply: "Markerad som klar. Snyggt. En loop mindre som ligger och skaver.", shouldContinue: true };
   }
 
   if (line === "/handoff") {
-    logRuntimeImprovementSuggestions();
+    await logRuntimeImprovementSuggestions();
     return {
-      reply: buildHandoffPrompt(),
+      reply: await buildHandoffPrompt(),
       shouldContinue: true
     };
   }
@@ -173,7 +173,7 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
       };
     }
 
-    upsertJargon(phrase, meaning);
+    await upsertJargon(phrase, meaning);
     return {
       reply: "Inlagt. Jag ska inte missbruka den. Jag är kaxig, inte desperat.",
       shouldContinue: true
@@ -181,14 +181,14 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
   }
 
   if (line === "/jargon") {
-    const jargon = getJargon();
+    const jargon = await getJargon();
     return {
       reply: formatList("Jarvis jargong", jargon.map((item) => `"${item.phrase}" = ${item.meaning}`)),
       shouldContinue: true
     };
   }
 
-  addConversation("user", line);
+  await addConversation("user", line);
 
   try {
     const [{ intent }, relevantMemories] = await Promise.all([
@@ -198,29 +198,30 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
     console.log(`[Jarvis intent] ${intent}, minnen: ${relevantMemories.length}`);
 
     if (intent === "note") {
-      return handleNoteIntent(line);
+      return await handleNoteIntent(line);
     }
 
     if (intent === "calendar") {
       const reply = await handleSmartCalendar(line);
-      addConversation("assistant", reply);
+      await addConversation("assistant", reply);
       return { reply, shouldContinue: true, intent };
     }
 
+    const jargon = await getJargon();
     const systemPrompt =
       intent === "code"
-        ? buildCodeSystemPrompt(relevantMemories, getJargon(), windowContext)
-        : buildSystemPrompt(relevantMemories, getJargon(), getImprovementSuggestions(5), windowContext);
+        ? buildCodeSystemPrompt(relevantMemories, jargon, windowContext)
+        : buildSystemPrompt(relevantMemories, jargon, await getImprovementSuggestions(5), windowContext);
 
-    const reply = await getJarvisReply(systemPrompt, getRecentConversation(), imageBase64);
-    addConversation("assistant", reply);
+    const reply = await getJarvisReply(systemPrompt, await getRecentConversation(), imageBase64);
+    await addConversation("assistant", reply);
 
     extractAndStoreMemories(line, reply).catch(() => {});
 
     return { reply, shouldContinue: true, intent };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    upsertImprovementSuggestion(
+    await upsertImprovementSuggestion(
       "Tydligare felhantering i Jarvis-svar",
       `Jarvis fångade ett tekniskt fel och visade det nästan rått: ${message}`,
       "Bygg ett felhanteringslager som skiljer på saknad konfiguration, nätverksfel, modellfel och interna buggar, och föreslår nästa steg.",
@@ -231,8 +232,8 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
   }
 }
 
-function handleNoteIntent(line: string): JarvisInputResult {
-  addMemory(line);
+async function handleNoteIntent(line: string): Promise<JarvisInputResult> {
+  await addMemory(line);
 
   const notesDir = process.env.JARVIS_NOTES_PATH;
   if (notesDir) {
@@ -247,7 +248,7 @@ function handleNoteIntent(line: string): JarvisInputResult {
     }
   }
 
-  addConversation("assistant", "Sparat.");
+  await addConversation("assistant", "Sparat.");
   return { reply: "Sparat.", shouldContinue: true, intent: "note" };
 }
 
@@ -329,9 +330,9 @@ function formatList(title: string, items: string[]) {
   return [`${title}:`, ...items.map((item) => `- ${item}`)].join("\n");
 }
 
-function logRuntimeImprovementSuggestions() {
+async function logRuntimeImprovementSuggestions() {
   if (!process.env.OPENAI_API_KEY) {
-    upsertImprovementSuggestion(
+    await upsertImprovementSuggestion(
       "Tydlig onboarding för scroll-knappens röstläge",
       "Push-to-talk via scroll-knappen kräver OPENAI_API_KEY, men appen har ingen tydlig onboarding som säger exakt vad som saknas innan användaren testar.",
       "Lägg till en statuspanel som visar om mikrofon, OpenAI-transkribering och Jarvis-modell är redo.",
@@ -346,7 +347,7 @@ function logRuntimeImprovementSuggestions() {
     (provider === "auto" && !process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY);
 
   if (isMock) {
-    upsertImprovementSuggestion(
+    await upsertImprovementSuggestion(
       "Synlig mock-mode varning",
       "Jarvis kan köras i mock-läge och kännas levande, men då är hon inte kopplad till riktig modell. Det bör synas tydligt.",
       "Visa en diskret men tydlig modellstatus i UI:t och låt Jarvis säga när hon bara kör mock.",
@@ -356,8 +357,8 @@ function logRuntimeImprovementSuggestions() {
   }
 }
 
-function buildReflectionReply() {
-  const suggestions = getImprovementSuggestions(6);
+async function buildReflectionReply() {
+  const suggestions = await getImprovementSuggestions(6);
 
   return [
     "Självdiagnos, utan att låtsas vara fulländad:",
@@ -371,8 +372,8 @@ function buildReflectionReply() {
   ].join("\n");
 }
 
-function buildHandoffPrompt() {
-  const suggestions = getImprovementSuggestions(5);
+async function buildHandoffPrompt() {
+  const suggestions = await getImprovementSuggestions(5);
 
   if (suggestions.length === 0) {
     return "Det finns inga öppna förbättringar. Misstänkt moget. Nästan obehagligt.";
@@ -390,7 +391,7 @@ function buildHandoffPrompt() {
   ].join("\n");
 }
 
-function formatImprovements(items: ReturnType<typeof getImprovementSuggestions>) {
+function formatImprovements(items: ImprovementSuggestion[]) {
   if (items.length === 0) {
     return "Förbättringsbackloggen är tom. Antingen är jag perfekt, eller så har vi inte tittat tillräckligt noga. Jag vet vilket jag tror.";
   }

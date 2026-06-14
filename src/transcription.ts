@@ -100,7 +100,7 @@ async function refineTranscript(rawTranscript: string) {
 
   if (!response.ok) {
     const body = await response.text();
-    upsertImprovementSuggestion(
+    await upsertImprovementSuggestion(
       "Robust fallback för transkriptputsning",
       `Efterkorrigering av transkript misslyckades: ${response.status} ${body}`,
       "Låt Jarvis använda rå transkribering tyst när putsning fallerar, och visa bara ett diskret förbättringsförslag i backlogen.",

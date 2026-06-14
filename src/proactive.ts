@@ -11,7 +11,7 @@ export async function checkForProactiveInsight(ctx: ProactiveContext): Promise<s
   if (!process.env.OPENAI_API_KEY) return null;
   if (ctx.minutesSinceLastInteraction < 20) return null;
 
-  const recentMemories = getMemories(6).map((m) => m.value);
+  const recentMemories = (await getMemories(6)).map((m) => m.value);
   const windowSummary = ctx.windowHistory
     .slice(0, 5)
     .map((w) => (w.title ? `${w.proc}: ${w.title}` : w.proc))

@@ -35,7 +35,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 export async function findRelevantMemories(query: string, limit = 10): Promise<Memory[]> {
-  const all = getAllMemoriesWithEmbeddings();
+  const all = await getAllMemoriesWithEmbeddings();
   if (all.length === 0) return [];
 
   const queryEmbedding = await getEmbedding(query);
@@ -71,7 +71,7 @@ export async function findRelevantMemories(query: string, limit = 10): Promise<M
 export async function embedAndStoreMemory(id: number, value: string) {
   const embedding = await getEmbedding(value);
   if (embedding) {
-    setMemoryEmbedding(id, JSON.stringify(embedding));
+    await setMemoryEmbedding(id, JSON.stringify(embedding));
   }
 }
 
@@ -117,7 +117,7 @@ export async function extractAndStoreMemories(userMessage: string, jarvisReply: 
 
     for (const fact of facts) {
       if (typeof fact === "string" && fact.length > 8) {
-        const id = addMemory(fact, "auto", "extraction");
+        const id = await addMemory(fact, "auto", "extraction");
         embedAndStoreMemory(id, fact).catch(() => {});
         console.log(`[Jarvis minne] Auto-sparat: "${fact}"`);
       }

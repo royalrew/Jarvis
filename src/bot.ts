@@ -2,7 +2,7 @@ import "dotenv/config";
 import { initDb } from "./db.js";
 import { startTelegramBot } from "./telegram.js";
 
-initDb();
+await initDb();
 
 const stopTelegramBot = startTelegramBot();
 

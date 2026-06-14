@@ -5,7 +5,7 @@ import { initDb } from "./db.js";
 import { handleJarvisInput } from "./core.js";
 import { startTelegramBot } from "./telegram.js";
 
-initDb();
+await initDb();
 startTelegramBot();
 
 const rl = readline.createInterface({ input, output });

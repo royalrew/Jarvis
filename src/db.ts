@@ -1,36 +1,56 @@
-import { DatabaseSync } from "node:sqlite";
+import postgres from "postgres";
 import type {
   ConversationMessage,
   ImprovementSuggestion,
   JargonPhrase,
-  LocalCalendarEvent,
   Memory,
   Role
 } from "./types.js";
 
-const db = new DatabaseSync(process.env.JARVIS_DB_PATH || "db.sqlite");
+/**
+ * Postgres-backat datalager för Jarvis-boten (Railway-deploy).
+ *
+ * Kalenderhändelser bor i src/calendarDb.ts (tabell calendar_event) och delas
+ * med trainer-appen. Här ligger konversation, minnen, jargong och
+ * förbättringsbacklogg. Allt är async eftersom postgres-drivern är det.
+ */
+let sql: ReturnType<typeof postgres> | null = null;
 
-export function initDb() {
-  db.exec(`
+function db() {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL saknas i .env.");
+  sql ??= postgres(url, { max: 5 });
+  return sql;
+}
+
+export async function initDb() {
+  const q = db();
+
+  await q`
     CREATE TABLE IF NOT EXISTS conversations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
       content TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 
+  await q`
     CREATE TABLE IF NOT EXISTS memories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       kind TEXT NOT NULL DEFAULT 'manual',
       value TEXT NOT NULL,
       confidence REAL NOT NULL DEFAULT 1.0,
       source TEXT NOT NULL DEFAULT 'manual',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
+      embedding TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 
+  await q`
     CREATE TABLE IF NOT EXISTS jargon_phrases (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       phrase TEXT NOT NULL UNIQUE,
       meaning TEXT NOT NULL,
       tone TEXT,
@@ -38,276 +58,154 @@ export function initDb() {
       avoid_when TEXT,
       strength INTEGER NOT NULL DEFAULT 3,
       examples TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      last_used_at TEXT
-    );
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_used_at TIMESTAMPTZ
+    )
+  `;
 
+  await q`
     CREATE TABLE IF NOT EXISTS style_feedback (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      phrase_id INTEGER,
+      id BIGSERIAL PRIMARY KEY,
+      phrase_id BIGINT REFERENCES jargon_phrases(id),
       reaction TEXT NOT NULL,
       note TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (phrase_id) REFERENCES jargon_phrases(id)
-    );
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 
+  await q`
     CREATE TABLE IF NOT EXISTS improvement_suggestions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       title TEXT NOT NULL UNIQUE,
       problem TEXT NOT NULL,
       proposal TEXT NOT NULL,
       priority INTEGER NOT NULL DEFAULT 3,
       status TEXT NOT NULL DEFAULT 'open',
       source TEXT NOT NULL DEFAULT 'manual',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS calendar_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      starts_at TEXT NOT NULL,
-      ends_at TEXT,
-      location TEXT,
-      notes TEXT,
-      source TEXT NOT NULL DEFAULT 'manual',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-
-  try {
-    db.exec("ALTER TABLE memories ADD COLUMN embedding TEXT");
-  } catch {}
-
-  seedKnownImprovementSuggestions();
-}
-
-export function addConversation(role: Role, content: string) {
-  db.prepare("INSERT INTO conversations (role, content) VALUES (?, ?)").run(role, content);
-}
-
-export function getRecentConversation(limit = 20): ConversationMessage[] {
-  const rows = db
-    .prepare(
-      `SELECT id, role, content, created_at as createdAt
-       FROM conversations
-       ORDER BY id DESC
-       LIMIT ?`
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
-    .all(limit) as ConversationMessage[];
+  `;
 
-  return rows.reverse();
+  await seedKnownImprovementSuggestions();
 }
 
-export function addMemory(value: string, kind = "manual", source = "manual"): number {
-  const result = db.prepare(
-    `INSERT INTO memories (kind, value, source, updated_at)
-     VALUES (?, ?, ?, datetime('now'))`
-  ).run(kind, value, source);
-  return Number(result.lastInsertRowid);
+export async function addConversation(role: Role, content: string) {
+  await db()`INSERT INTO conversations (role, content) VALUES (${role}, ${content})`;
 }
 
-export function setMemoryEmbedding(id: number, embedding: string) {
-  db.prepare("UPDATE memories SET embedding = ? WHERE id = ?").run(embedding, id);
+export async function getRecentConversation(limit = 20): Promise<ConversationMessage[]> {
+  const rows = await db()`
+    SELECT id, role, content, created_at AS "createdAt"
+    FROM conversations
+    ORDER BY id DESC
+    LIMIT ${limit}
+  `;
+  return (rows as unknown as ConversationMessage[]).reverse();
 }
 
-export function getMemories(limit = 20): Memory[] {
-  return db
-    .prepare(
-      `SELECT id, kind, value, confidence, source, created_at as createdAt, updated_at as updatedAt
-       FROM memories
-       ORDER BY updated_at DESC
-       LIMIT ?`
-    )
-    .all(limit) as Memory[];
+export async function addMemory(value: string, kind = "manual", source = "manual"): Promise<number> {
+  const rows = await db()`
+    INSERT INTO memories (kind, value, source, updated_at)
+    VALUES (${kind}, ${value}, ${source}, now())
+    RETURNING id
+  `;
+  return Number(rows[0]?.id);
 }
 
-export function getAllMemoriesWithEmbeddings(): Memory[] {
-  return db
-    .prepare(
-      `SELECT id, kind, value, confidence, source, created_at as createdAt, updated_at as updatedAt, embedding
-       FROM memories
-       ORDER BY updated_at DESC`
-    )
-    .all() as Memory[];
+export async function setMemoryEmbedding(id: number, embedding: string) {
+  await db()`UPDATE memories SET embedding = ${embedding} WHERE id = ${id}`;
 }
 
-export function upsertJargon(phrase: string, meaning: string) {
-  db.prepare(
-    `INSERT INTO jargon_phrases (phrase, meaning, tone, use_when, strength)
-     VALUES (?, ?, 'kaxig med värme', 'när Jimmy tappar fokus, överbygger eller behöver en rak puff', 3)
-     ON CONFLICT(phrase) DO UPDATE SET
-       meaning = excluded.meaning,
-       last_used_at = datetime('now')`
-  ).run(phrase, meaning);
+export async function getMemories(limit = 20): Promise<Memory[]> {
+  const rows = await db()`
+    SELECT id, kind, value, confidence, source,
+           created_at AS "createdAt", updated_at AS "updatedAt"
+    FROM memories
+    ORDER BY updated_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as unknown as Memory[];
 }
 
-export function getJargon(limit = 20): JargonPhrase[] {
-  return db
-    .prepare(
-      `SELECT
-        id,
-        phrase,
-        meaning,
-        tone,
-        use_when as useWhen,
-        avoid_when as avoidWhen,
-        strength,
-        examples,
-        created_at as createdAt,
-        last_used_at as lastUsedAt
-       FROM jargon_phrases
-       ORDER BY COALESCE(last_used_at, created_at) DESC
-       LIMIT ?`
-    )
-    .all(limit) as JargonPhrase[];
+export async function getAllMemoriesWithEmbeddings(): Promise<Memory[]> {
+  const rows = await db()`
+    SELECT id, kind, value, confidence, source,
+           created_at AS "createdAt", updated_at AS "updatedAt", embedding
+    FROM memories
+    ORDER BY updated_at DESC
+  `;
+  return rows as unknown as Memory[];
 }
 
-export function upsertImprovementSuggestion(
+export async function upsertJargon(phrase: string, meaning: string) {
+  await db()`
+    INSERT INTO jargon_phrases (phrase, meaning, tone, use_when, strength)
+    VALUES (${phrase}, ${meaning}, 'kaxig med värme', 'när Jimmy tappar fokus, överbygger eller behöver en rak puff', 3)
+    ON CONFLICT (phrase) DO UPDATE SET
+      meaning = EXCLUDED.meaning,
+      last_used_at = now()
+  `;
+}
+
+export async function getJargon(limit = 20): Promise<JargonPhrase[]> {
+  const rows = await db()`
+    SELECT
+      id, phrase, meaning, tone,
+      use_when AS "useWhen",
+      avoid_when AS "avoidWhen",
+      strength, examples,
+      created_at AS "createdAt",
+      last_used_at AS "lastUsedAt"
+    FROM jargon_phrases
+    ORDER BY COALESCE(last_used_at, created_at) DESC
+    LIMIT ${limit}
+  `;
+  return rows as unknown as JargonPhrase[];
+}
+
+export async function upsertImprovementSuggestion(
   title: string,
   problem: string,
   proposal: string,
   priority = 3,
   source = "manual"
 ) {
-  db.prepare(
-    `INSERT INTO improvement_suggestions (title, problem, proposal, priority, source, updated_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(title) DO UPDATE SET
-       problem = excluded.problem,
-       proposal = excluded.proposal,
-       priority = excluded.priority,
-       source = excluded.source,
-       updated_at = datetime('now')`
-  ).run(title, problem, proposal, priority, source);
-}
-
-export function getImprovementSuggestions(limit = 10): ImprovementSuggestion[] {
-  return db
-    .prepare(
-      `SELECT
-        id,
-        title,
-        problem,
-        proposal,
-        priority,
-        status,
-        source,
-        created_at as createdAt,
-        updated_at as updatedAt
-       FROM improvement_suggestions
-       WHERE status = 'open'
-       ORDER BY priority DESC, updated_at DESC
-       LIMIT ?`
-    )
-    .all(limit) as ImprovementSuggestion[];
-}
-
-export function closeImprovementSuggestion(id: number, status = "done") {
-  db.prepare(
-    `UPDATE improvement_suggestions
-     SET status = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(status, id);
-}
-
-export function addCalendarEvent(input: {
-  title: string;
-  startsAt: string;
-  endsAt?: string | null;
-  location?: string | null;
-  notes?: string | null;
-  source?: string;
-}) {
-  const result = db.prepare(
-    `INSERT INTO calendar_events (title, starts_at, ends_at, location, notes, source, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
-  ).run(
-    input.title,
-    input.startsAt,
-    input.endsAt ?? null,
-    input.location ?? null,
-    input.notes ?? null,
-    input.source ?? "manual"
-  );
-  return Number(result.lastInsertRowid);
-}
-
-export function getCalendarEvents(rangeStart?: string, rangeEnd?: string): LocalCalendarEvent[] {
-  const baseSelect = `
-    SELECT
-      id,
-      title,
-      starts_at as startsAt,
-      ends_at as endsAt,
-      location,
-      notes,
-      source,
-      created_at as createdAt,
-      updated_at as updatedAt
-    FROM calendar_events
+  await db()`
+    INSERT INTO improvement_suggestions (title, problem, proposal, priority, source, updated_at)
+    VALUES (${title}, ${problem}, ${proposal}, ${priority}, ${source}, now())
+    ON CONFLICT (title) DO UPDATE SET
+      problem = EXCLUDED.problem,
+      proposal = EXCLUDED.proposal,
+      priority = EXCLUDED.priority,
+      source = EXCLUDED.source,
+      updated_at = now()
   `;
-
-  if (rangeStart && rangeEnd) {
-    return db.prepare(
-      `${baseSelect}
-       WHERE COALESCE(ends_at, starts_at) >= ? AND starts_at < ?
-       ORDER BY starts_at ASC`
-    ).all(rangeStart, rangeEnd) as LocalCalendarEvent[];
-  }
-
-  return db.prepare(
-    `${baseSelect}
-     ORDER BY starts_at ASC
-     LIMIT 100`
-  ).all() as LocalCalendarEvent[];
 }
 
-export function deleteCalendarEvent(id: number) {
-  db.prepare("DELETE FROM calendar_events WHERE id = ?").run(id);
+export async function getImprovementSuggestions(limit = 10): Promise<ImprovementSuggestion[]> {
+  const rows = await db()`
+    SELECT
+      id, title, problem, proposal, priority, status, source,
+      created_at AS "createdAt",
+      updated_at AS "updatedAt"
+    FROM improvement_suggestions
+    WHERE status = 'open'
+    ORDER BY priority DESC, updated_at DESC
+    LIMIT ${limit}
+  `;
+  return rows as unknown as ImprovementSuggestion[];
 }
 
-export function updateCalendarEvent(id: number, updates: {
-  title?: string;
-  startsAt?: string;
-  endsAt?: string | null;
-  location?: string | null;
-  notes?: string | null;
-}) {
-  const fields: string[] = [];
-  const values: any[] = [];
-
-  if (updates.title !== undefined) {
-    fields.push("title = ?");
-    values.push(updates.title);
-  }
-  if (updates.startsAt !== undefined) {
-    fields.push("starts_at = ?");
-    values.push(updates.startsAt);
-  }
-  if (updates.endsAt !== undefined) {
-    fields.push("ends_at = ?");
-    values.push(updates.endsAt);
-  }
-  if (updates.location !== undefined) {
-    fields.push("location = ?");
-    values.push(updates.location);
-  }
-  if (updates.notes !== undefined) {
-    fields.push("notes = ?");
-    values.push(updates.notes);
-  }
-
-  if (fields.length === 0) return;
-
-  fields.push("updated_at = datetime('now')");
-  values.push(id);
-
-  db.prepare(`UPDATE calendar_events SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+export async function closeImprovementSuggestion(id: number, status = "done") {
+  await db()`
+    UPDATE improvement_suggestions
+    SET status = ${status}, updated_at = now()
+    WHERE id = ${id}
+  `;
 }
 
-function seedKnownImprovementSuggestions() {
+async function seedKnownImprovementSuggestions() {
   const suggestions = [
     {
       title: "Approval-gated self coding",
@@ -344,7 +242,7 @@ function seedKnownImprovementSuggestions() {
   ];
 
   for (const suggestion of suggestions) {
-    upsertImprovementSuggestion(
+    await upsertImprovementSuggestion(
       suggestion.title,
       suggestion.problem,
       suggestion.proposal,
