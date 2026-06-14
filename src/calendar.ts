@@ -1,3 +1,6 @@
+import { addCalendarEvent, deleteCalendarEvent, getCalendarEvents, updateCalendarEvent } from "./calendarDb.js";
+import { getCalendarSmartAction } from "./llm.js";
+
 export type CalendarEvent = {
   title: string;
   start: Date;
@@ -253,4 +256,94 @@ function unescapeText(value: string) {
     .replace(/\\;/g, ";")
     .replace(/\\\\/g, "\\")
     .trim();
+}
+
+export async function handleSmartCalendar(input: string): Promise<string> {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 45);
+  const localEvents = await getCalendarEvents(start.toISOString(), end.toISOString());
+
+  const eventListText = localEvents.length === 0
+    ? "Inga kommande händelser i kalendern."
+    : localEvents.map(e => {
+        const startStr = new Date(e.startsAt).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" });
+        const endStr = e.endsAt ? new Date(e.endsAt).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) : "Ingen sluttid";
+        return `- ID #${e.id}: "${e.title}" (${startStr} till ${endStr}) ${e.location ? `Plats: ${e.location}` : ""} ${e.notes ? `Notering: ${e.notes}` : ""}`;
+      }).join("\n");
+
+  const currentLocalTime = new Date().toISOString();
+  
+  const systemPrompt = `
+Du är Jarvis, en personlig digital kollega. Din uppgift är att hantera användarens kalenderhändelser.
+Användaren kan vilja boka, avboka (ta bort), flytta (uppdatera) eller bara se sina inplanerade möten.
+
+Här är nuvarande datum och tid: ${currentLocalTime} (Observera: om användaren säger "imorgon", "nästa tisdag" osv., utgå från detta datum).
+Här är en lista över alla befintliga händelser i den lokala kalendern för de kommande 45 dagarna:
+${eventListText}
+
+Analysera användarens meddelande och bestäm vilken åtgärd som ska utföras.
+Svara EXKLUSIVT med ett JSON-objekt i följande format:
+{
+  "action": "add" | "update" | "delete" | "list" | "none",
+  "eventId": "string (UUID eller ID från listan)" | null,
+  "addEvent": {
+    "title": "titel på mötet",
+    "startsAt": "ISO datetime string (lokal tid, t.ex. YYYY-MM-DDTHH:MM:SS)",
+    "endsAt": "ISO datetime string | null",
+    "location": "plats eller null",
+    "notes": "notering eller null"
+  } | null,
+  "updateEvent": {
+    "title": "ny titel eller null",
+    "startsAt": "ny ISO startsAt string eller null",
+    "endsAt": "ny ISO endsAt string eller null",
+    "location": "ny plats eller null",
+    "notes": "ny notering eller null"
+  } | null,
+  "explanation": "En mycket kort, trevlig och professionell förklaring på svenska av vad du har gjort eller visar."
+}
+  `.trim();
+
+  try {
+    const result = await getCalendarSmartAction(systemPrompt, input);
+
+    if (result.action === "add" && result.addEvent) {
+      const id = await addCalendarEvent({
+        title: result.addEvent.title,
+        startsAt: result.addEvent.startsAt,
+        endsAt: result.addEvent.endsAt,
+        location: result.addEvent.location,
+        notes: result.addEvent.notes,
+        source: "jarvis"
+      });
+      return `Bokat! Jag lade in **"${result.addEvent.title}"** i din kalender. (Id #${id})`;
+    }
+
+    if (result.action === "delete" && result.eventId) {
+      await deleteCalendarEvent(result.eventId);
+      return `Avbokat! Jag har tagit bort möte #${result.eventId} från kalendern.`;
+    }
+
+    if (result.action === "update" && result.eventId && result.updateEvent) {
+      const updates: any = {};
+      if (result.updateEvent.title !== null) updates.title = result.updateEvent.title;
+      if (result.updateEvent.startsAt !== null) updates.startsAt = result.updateEvent.startsAt;
+      if (result.updateEvent.endsAt !== null) updates.endsAt = result.updateEvent.endsAt;
+      if (result.updateEvent.location !== null) updates.location = result.updateEvent.location;
+      if (result.updateEvent.notes !== null) updates.notes = result.updateEvent.notes;
+
+      await updateCalendarEvent(result.eventId, updates);
+      return `Uppdaterat! Jag har flyttat/ändrat möte #${result.eventId}.`;
+    }
+
+    if (result.action === "list") {
+      return result.explanation;
+    }
+  } catch (error) {
+    console.error("[Smart Calendar] Error:", error);
+  }
+
+  return "Jag förstod att du ville göra något med kalendern, men jag kunde inte tyda exakt vad. Kan du förtydliga t.ex. tid eller titel?";
 }

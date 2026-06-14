@@ -1,4 +1,4 @@
-export type Intent = "chat" | "note" | "code";
+export type Intent = "chat" | "note" | "code" | "calendar";
 
 export type IntentResult = {
   intent: Intent;
@@ -28,10 +28,11 @@ export async function classifyIntent(text: string): Promise<IntentResult> {
           {
             role: "system",
             content: [
-              'Klassificera meddelandet i ett intent. Svara med JSON: {"intent":"chat|note|code","confidence":0.0-1.0}',
+              'Klassificera meddelandet i ett intent. Svara med JSON: {"intent":"chat|note|code|calendar","confidence":0.0-1.0}',
               '"chat" — samtal, frågor, diskussion, tankar högt',
-              '"note" — vill spara en notering, tanke, påminnelse eller faktum för senare',
-              '"code" — vill ha kod skriven: funktion, skript, klass, SQL, config'
+              '"note" — vill spara en notering, tanke, påminnelse eller faktum för senare (inte kalenderbokningar)',
+              '"code" — vill ha kod skriven: funktion, skript, klass, SQL, config',
+              '"calendar" — vill se, boka, lägga till, flytta, ändra, avboka eller ta bort saker i sin kalender'
             ].join("\n")
           },
           { role: "user", content: text }
@@ -49,7 +50,7 @@ export async function classifyIntent(text: string): Promise<IntentResult> {
 
     const raw = data.choices?.[0]?.message?.content || "{}";
     const parsed = JSON.parse(raw) as { intent?: string; confidence?: number };
-    const intent = (["chat", "note", "code"].includes(parsed.intent ?? "") ? parsed.intent : "chat") as Intent;
+    const intent = (["chat", "note", "code", "calendar"].includes(parsed.intent ?? "") ? parsed.intent : "chat") as Intent;
     return { intent, confidence: parsed.confidence ?? 0.9 };
   } catch {
     return { intent: "chat", confidence: 1 };

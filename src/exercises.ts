@@ -1,0 +1,97 @@
+export type Mode = "reps" | "hold";
+
+export type ExerciseGroup = "Drag" | "Press" | "Bål" | "Skill" | "Ben" | "Uppvärmning";
+
+export type CatalogExercise = {
+  name: string;
+  group: ExerciseGroup;
+  mode: Mode;
+};
+
+/** Övningskatalog – matar Logg-datalisten och auto-väljer reps/håll. */
+export const EXERCISES: CatalogExercise[] = [
+  { name: "Pull-ups", group: "Drag", mode: "reps" },
+  { name: "Australiska rows", group: "Drag", mode: "reps" },
+  { name: "Scapula-pulls", group: "Drag", mode: "reps" },
+  { name: "Negativa pull-ups", group: "Drag", mode: "reps" },
+  { name: "Dips (band)", group: "Press", mode: "reps" },
+  { name: "Dips negativa", group: "Press", mode: "reps" },
+  { name: "Dips", group: "Press", mode: "reps" },
+  { name: "Armhävningar", group: "Press", mode: "reps" },
+  { name: "Pike push-ups", group: "Press", mode: "reps" },
+  { name: "Pseudo planche push-ups", group: "Press", mode: "reps" },
+  { name: "Hängande knälyft", group: "Bål", mode: "reps" },
+  { name: "Hängande benlyft", group: "Bål", mode: "reps" },
+  { name: "Liggande benlyft", group: "Bål", mode: "reps" },
+  { name: "Side plank", group: "Bål", mode: "hold" },
+  { name: "Hollow hold", group: "Bål", mode: "hold" },
+  { name: "Tuck front lever", group: "Skill", mode: "hold" },
+  { name: "Support-hållning", group: "Skill", mode: "hold" },
+  { name: "Pseudo planche-lutning", group: "Skill", mode: "hold" },
+  { name: "Väggstående handstativ", group: "Skill", mode: "hold" },
+  { name: "Frigående handstativ", group: "Skill", mode: "hold" },
+  { name: "Vertikal flagga", group: "Skill", mode: "hold" },
+  { name: "Tuck-flagga", group: "Skill", mode: "hold" },
+  { name: "Straddle-flagga", group: "Skill", mode: "hold" },
+  { name: "Knäböj", group: "Ben", mode: "reps" },
+  { name: "Split squats", group: "Ben", mode: "reps" },
+  { name: "Pistol-progression", group: "Ben", mode: "reps" },
+  { name: "Jumping jacks", group: "Uppvärmning", mode: "reps" },
+  { name: "Mountain climbers", group: "Uppvärmning", mode: "reps" },
+  { name: "High knees", group: "Uppvärmning", mode: "reps" },
+  { name: "Armcirklar & axelprep", group: "Uppvärmning", mode: "reps" },
+  { name: "Handleds-stretch & prep", group: "Uppvärmning", mode: "hold" },
+  { name: "Benböj (uppvärmning)", group: "Uppvärmning", mode: "reps" },
+  { name: "Burpees (lågt tempo)", group: "Uppvärmning", mode: "reps" },
+  { name: "Scapula-pulls i stången", group: "Uppvärmning", mode: "reps" },
+  { name: "Frog stand", group: "Skill", mode: "hold" },
+  { name: "L-sit", group: "Skill", mode: "hold" },
+  { name: "Skin the cat", group: "Skill", mode: "reps" },
+  { name: "Back lever", group: "Skill", mode: "hold" },
+  { name: "Dragon flag", group: "Skill", mode: "reps" },
+  { name: "Straight Bar Inclined Push Up", group: "Press", mode: "reps" },
+  { name: "Straight Bar Push Up", group: "Press", mode: "reps" },
+  { name: "Dip Shrug", group: "Press", mode: "reps" },
+  { name: "Dip Hold", group: "Press", mode: "hold" },
+  { name: "Assisted Dip", group: "Press", mode: "reps" },
+  { name: "Ring Hold", group: "Skill", mode: "hold" },
+  { name: "Overhead Ring Fly", group: "Press", mode: "reps" },
+  { name: "Ring Fly", group: "Press", mode: "reps" },
+  { name: "Ring Push Up", group: "Press", mode: "reps" },
+  { name: "Ring Tricep Extension", group: "Press", mode: "reps" },
+  { name: "Straight Bar Dip", group: "Press", mode: "reps" },
+  { name: "Assisted Handstand with Parallettes", group: "Skill", mode: "hold" },
+  { name: "Tricep Extension", group: "Press", mode: "reps" },
+  { name: "Decline Push Up", group: "Press", mode: "reps" },
+  { name: "Archer Dip", group: "Press", mode: "reps" },
+  { name: "Assisted Straddle Planche", group: "Skill", mode: "hold" },
+  { name: "Elbow Hold", group: "Skill", mode: "hold" },
+  { name: "L-Sit to Handstand", group: "Skill", mode: "reps" },
+  { name: "Press to Handstand", group: "Skill", mode: "reps" },
+  { name: "Handstand Push Up", group: "Press", mode: "reps" },
+  { name: "Iguana Handstand", group: "Skill", mode: "hold" },
+  { name: "Straight Bar Handstand", group: "Skill", mode: "hold" },
+  { name: "Straddle Planche", group: "Skill", mode: "hold" },
+  { name: "Assisted Straddle Planche Push Up", group: "Press", mode: "reps" },
+  { name: "Assisted Planche Push Up", group: "Press", mode: "reps" },
+  { name: "Bent Arm Planche", group: "Skill", mode: "hold" },
+  { name: "Russian Dip", group: "Press", mode: "reps" },
+  { name: "Deep Handstand Push Up", group: "Press", mode: "reps" },
+  { name: "90 Degree Handstand Push Up", group: "Press", mode: "reps" },
+  { name: "One Arm Handstand", group: "Skill", mode: "hold" },
+  { name: "Assisted One Arm Handstand Push Up", group: "Press", mode: "reps" },
+  { name: "Straight Bar Planche", group: "Skill", mode: "hold" },
+  { name: "Planche", group: "Skill", mode: "hold" },
+  { name: "Aktiv planka", group: "Skill", mode: "hold" },
+  { name: "Aktivt häng", group: "Drag", mode: "hold" },
+  { name: "Flaggstöd", group: "Skill", mode: "hold" },
+  { name: "Liggande knälyft", group: "Bål", mode: "reps" },
+  { name: "Elevated pike push-ups", group: "Press", mode: "reps" },
+  { name: "Support-hållning assisterad", group: "Skill", mode: "hold" },
+  { name: "Armhävningar på knä", group: "Press", mode: "reps" },
+];
+
+/** Slår upp mode för ett namn; default 'reps' om okänt. */
+export function modeFor(name: string): Mode {
+  return EXERCISES.find((e) => e.name === name)?.mode ?? "reps";
+}

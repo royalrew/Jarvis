@@ -268,6 +268,45 @@ export function deleteCalendarEvent(id: number) {
   db.prepare("DELETE FROM calendar_events WHERE id = ?").run(id);
 }
 
+export function updateCalendarEvent(id: number, updates: {
+  title?: string;
+  startsAt?: string;
+  endsAt?: string | null;
+  location?: string | null;
+  notes?: string | null;
+}) {
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (updates.title !== undefined) {
+    fields.push("title = ?");
+    values.push(updates.title);
+  }
+  if (updates.startsAt !== undefined) {
+    fields.push("starts_at = ?");
+    values.push(updates.startsAt);
+  }
+  if (updates.endsAt !== undefined) {
+    fields.push("ends_at = ?");
+    values.push(updates.endsAt);
+  }
+  if (updates.location !== undefined) {
+    fields.push("location = ?");
+    values.push(updates.location);
+  }
+  if (updates.notes !== undefined) {
+    fields.push("notes = ?");
+    values.push(updates.notes);
+  }
+
+  if (fields.length === 0) return;
+
+  fields.push("updated_at = datetime('now')");
+  values.push(id);
+
+  db.prepare(`UPDATE calendar_events SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+}
+
 function seedKnownImprovementSuggestions() {
   const suggestions = [
     {

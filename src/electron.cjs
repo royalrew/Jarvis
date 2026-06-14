@@ -400,14 +400,14 @@ ipcMain.handle("jarvis:send", async (_event, input) => {
 
 ipcMain.handle("jarvis:calendar:list", async (_event, payload = {}) => {
   await loadCore();
-  const db = await import("./db.js");
-  return db.getCalendarEvents(payload.rangeStart, payload.rangeEnd);
+  const calendarDb = await import("./calendarDb.js");
+  return calendarDb.getCalendarEvents(payload.rangeStart, payload.rangeEnd);
 });
 
 ipcMain.handle("jarvis:calendar:add", async (_event, payload = {}) => {
   await loadCore();
-  const db = await import("./db.js");
-  return db.addCalendarEvent({
+  const calendarDb = await import("./calendarDb.js");
+  return calendarDb.addCalendarEvent({
     title: String(payload.title || "").trim(),
     startsAt: String(payload.startsAt || ""),
     endsAt: payload.endsAt ? String(payload.endsAt) : null,
@@ -419,8 +419,15 @@ ipcMain.handle("jarvis:calendar:add", async (_event, payload = {}) => {
 
 ipcMain.handle("jarvis:calendar:delete", async (_event, id) => {
   await loadCore();
-  const db = await import("./db.js");
-  db.deleteCalendarEvent(Number(id));
+  const calendarDb = await import("./calendarDb.js");
+  calendarDb.deleteCalendarEvent(String(id));
+  return true;
+});
+
+ipcMain.handle("jarvis:calendar:update", async (_event, payload = {}) => {
+  await loadCore();
+  const calendarDb = await import("./calendarDb.js");
+  calendarDb.updateCalendarEvent(String(payload.id), payload.updates);
   return true;
 });
 

@@ -18,7 +18,8 @@ contextBridge.exposeInMainWorld("jarvis", {
   calendar: {
     list: (rangeStart, rangeEnd) => ipcRenderer.invoke("jarvis:calendar:list", { rangeStart, rangeEnd }),
     add: (event) => ipcRenderer.invoke("jarvis:calendar:add", event),
-    delete: (id) => ipcRenderer.invoke("jarvis:calendar:delete", id)
+    delete: (id) => ipcRenderer.invoke("jarvis:calendar:delete", id),
+    update: (id, updates) => ipcRenderer.invoke("jarvis:calendar:update", { id, updates })
   },
   onProactiveMessage: (callback) => {
     ipcRenderer.on("jarvis:proactive-message", (_event, message) => callback(message));

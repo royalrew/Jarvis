@@ -17,7 +17,8 @@
     "dist:win:portable": "npm run build && electron-builder --win portable --config electron-builder.json"
   },
   "dependencies": {
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

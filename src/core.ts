@@ -15,7 +15,8 @@ import { getJarvisReply } from "./llm.js";
 import { classifyIntent } from "./intent.js";
 import { findRelevantMemories, extractAndStoreMemories, embedAndStoreMemory } from "./memory.js";
 import { buildSystemPrompt, buildCodeSystemPrompt } from "./prompts.js";
-import { formatAgenda, getCalendarAgenda, getNamedRange } from "./calendar.js";
+import { formatAgenda, getCalendarAgenda, getNamedRange, handleSmartCalendar } from "./calendar.js";
+import { handleTrainingCommand, parseTrainingCommand } from "./training.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -42,6 +43,25 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
     const id = addMemory(value);
     embedAndStoreMemory(id, value).catch(() => {});
     return { reply: "Sparat. Det där slipper du förklara igen.", shouldContinue: true };
+  }
+
+  const trainingCommand = parseTrainingCommand(line);
+  if (trainingCommand) {
+    try {
+      const reply = await handleTrainingCommand(trainingCommand);
+      if (reply !== null) {
+        addConversation("user", line);
+        addConversation("assistant", reply);
+        return { reply, shouldContinue: true, intent: "training" };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        reply: `Träningsdelen är inte redo: ${message}`,
+        shouldContinue: true,
+        intent: "training"
+      };
+    }
   }
 
   if (line === "/memories") {
@@ -179,6 +199,12 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
 
     if (intent === "note") {
       return handleNoteIntent(line);
+    }
+
+    if (intent === "calendar") {
+      const reply = await handleSmartCalendar(line);
+      addConversation("assistant", reply);
+      return { reply, shouldContinue: true, intent };
     }
 
     const systemPrompt =

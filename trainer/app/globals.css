@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --surface2: #eef4ff;
+  --line: #d9e1ec;
+  --text: #172033;
+  --muted: #536173;
+  --faint: #8a96a8;
+  --ember: #2563eb;
+  --gold: #0f766e;
+  --green: #16a34a;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+    background:
+      radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.10), transparent 34%),
+      linear-gradient(180deg, #f8fbff 0%, var(--bg) 42%, #eef3f8 100%);
+    font-feature-settings: "tnum" 1;
+  }
+  /* Alla siffror/stats med tabular-nums */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ember);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Versal "eyebrow"-etikett */
+  .eyebrow {
+    @apply text-[11px] font-extrabold uppercase tracking-eyebrow text-muted;
+  }
+  .card {
+    @apply rounded-card border border-line bg-surface shadow-sm;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
