@@ -4,8 +4,20 @@ import { getTrainingSmartMatch, generateDynamicWorkout } from "./llm.js";
 import { TIERS } from "./seed-content.js";
 
 type Mode = "reps" | "hold";
+export type TrainingLocation = "hemma" | "utegym";
 
 const USER_ID = "me";
+
+/**
+ * Tolkar om Jimmy sagt att han tränar ute (utegym/stång) eller inne (hemma/golv),
+ * så att dagens pass kan anpassas efter tillgänglig utrustning.
+ */
+export function detectTrainingLocation(message: string): TrainingLocation | undefined {
+  const p = normalizeText(message.toLowerCase());
+  if (/\bute\b|utegym|utomhus|parken|stang|racke|barr/.test(p)) return "utegym";
+  if (/\binne\b|hemma|inomhus|vardagsrum|golvet|hemmaplan/.test(p)) return "hemma";
+  return undefined;
+}
 
 const EXERCISE_MODE: Record<string, Mode> = {
   "pull-ups": "reps",
@@ -177,7 +189,7 @@ export function parseTrainingCommand(input: string) {
         plain.includes("idag") ||
         plain.includes("imorgon")))
   ) {
-    return { type: "today" as const };
+    return { type: "today" as const, location: detectTrainingLocation(input) };
   }
 
   if (
@@ -205,7 +217,7 @@ export function parseTrainingCommand(input: string) {
 }
 
 export async function handleTrainingCommand(command: NonNullable<ReturnType<typeof parseTrainingCommand>>) {
-  if (command.type === "today") return getTodayTrainingReply();
+  if (command.type === "today") return getTodayTrainingReply(command.location);
   if (command.type === "status") return getTrainingStatusReply();
   if (command.type === "open") return getOpenTrainingReply(command.view);
   if (command.type === "next") return getNextTrainingReply();
@@ -384,7 +396,7 @@ async function getActiveCampaignItem() {
   return null;
 }
 
-async function getTodayTrainingReply() {
+async function getTodayTrainingReply(location?: TrainingLocation) {
   const activeItem = await getActiveCampaignItem();
   if (!activeItem) {
     return [
@@ -394,10 +406,17 @@ async function getTodayTrainingReply() {
   }
 
   const status = await getProgressSummary();
-  const generated = await generateDynamicWorkout(activeItem, status);
+  const generated = await generateDynamicWorkout(activeItem, status, location);
+
+  const header =
+    location === "hemma"
+      ? "🏠 Hemmapass (golv, parallettes, hantlar).\n\n"
+      : location === "utegym"
+        ? "🏋️ Utegympass (stång, räcke, barr).\n\n"
+        : "";
 
   return [
-    generated.workoutText,
+    `${header}${generated.workoutText}`,
     "",
     "💡 *Tips:* Skriv 'spara passet' så förbereder jag det här träningspasset direkt i din träningsdagbok!",
     "",

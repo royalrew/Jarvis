@@ -82,13 +82,13 @@ async function testDynamicWorkoutGeneration() {
 
   // 1. Check parsing
   const cmdToday = parseTrainingCommand("vad ska jag träna idag?");
-  assert.deepStrictEqual(cmdToday, { type: "today" });
+  assert.deepStrictEqual(cmdToday, { type: "today", location: undefined });
 
   const cmdDraft = parseTrainingCommand("spara passet");
   assert.deepStrictEqual(cmdDraft, { type: "createDraft" });
 
   // 2. Run handlers
-  const replyToday = await handleTrainingCommand({ type: "today" });
+  const replyToday = await handleTrainingCommand({ type: "today", location: undefined });
   console.log("Today's workout reply:", replyToday);
   assert.ok(replyToday && replyToday.length > 0, "Workout reply should not be empty");
 

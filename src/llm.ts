@@ -374,12 +374,20 @@ export async function getCalendarSmartAction(
 
 export async function generateDynamicWorkout(
   activeItem: any,
-  currentLevels: any
+  currentLevels: any,
+  location?: "hemma" | "utegym"
 ): Promise<{
   workoutText: string;
   exercisesToLog: Array<{ name: string; mode: "reps" | "hold"; sets: number[] }>;
 }> {
   const provider = resolveProvider();
+
+  const locationBlock =
+    location === "hemma"
+      ? `\n\nVIKTIGT – Jimmy tränar HEMMA idag. Tillgänglig utrustning: golv, parallettes/låga barr, hantlar och kettlebell. Det finns INGEN pull-up-stång eller räcke hemma. Föreslå därför INGA hängande övningar eller stångövningar (inga Pull-ups, Australiska rows, Scapula-pulls i stången, Hängande knälyft, Hängande benlyft, Tuck front lever, muscle-up). Använd golv- och parallettes-varianter istället (armhävningar, pike push-ups, pseudo planche-lutning, hollow hold, L-sit, side plank, väggstående handstativ, liggande benlyft, split squats/pistols).`
+      : location === "utegym"
+        ? `\n\nVIKTIGT – Jimmy tränar på UTEGYM idag. Tillgänglig utrustning: pull-up-stång, räcke och parallel bars (men INGA ringar). Prioritera stång- och räckesövningar: pull-ups, australiska rows, scapula-pulls, hängande knä-/benlyft, tuck front lever och dips på barren — utöver fokusövningarna.`
+        : "";
 
   const systemPrompt = `Du är Jarvis, en personlig, kaxig och intelligent AI-tränare för användaren Jimmy.
 Din uppgift är att generera ett skräddarsytt träningspass baserat på användarens nuvarande nivåer och deras aktiva kampanjvecka/slutboss.
@@ -481,7 +489,7 @@ Fokus: ${activeItem.focus}
 Krav/Kriterier: ${activeItem.criteria}
 
 Användarens nuvarande nivåer:
-${JSON.stringify(currentLevels, null, 2)}`;
+${JSON.stringify(currentLevels, null, 2)}${locationBlock}`;
 
   if (provider === "openai" && process.env.OPENAI_API_KEY) {
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
