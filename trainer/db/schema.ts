@@ -62,6 +62,13 @@ export const trackLevel = pgTable("track_level", {
   name: text("name").notNull(),
   target: text("target").notNull(), // t.ex. "5 reps" / "10s"
   elite: boolean("elite").notNull().default(false),
+  // Delad coaching-källa (seedas från lib/level-guides.ts). Både appen och
+  // Telegram-boten kan läsa härifrån så de säger exakt samma sak.
+  plain: text("plain"), // begripligt namn
+  how: text("how"), // så här gör du
+  regression: text("regression"), // lättare ingång om för svårt
+  cue: text("cue"), // viktigaste tekniknyckeln
+  ready: text("ready"), // kvitto på att gå vidare
 });
 
 export const trackProgress = pgTable(

@@ -562,6 +562,52 @@ export async function getCoachContext(): Promise<string> {
     .join("\n");
 }
 
+/**
+ * Hämtar appens officiella cues för de övningar som nämns i meddelandet, så att
+ * boten kan grunda sin coaching i exakt samma text som visas i appen.
+ * Matchar på nyckelord mot track_level.name/plain (t.ex. "frog", "lever").
+ */
+export async function getExerciseCoaching(message: string): Promise<string | null> {
+  const tokens = message
+    .toLowerCase()
+    .split(/[^a-zåäö0-9-]+/)
+    .filter((w) => w.length >= 4 && !COACH_STOPWORDS.has(w));
+  if (tokens.length === 0) return null;
+
+  const patterns = tokens.map((t) => `%${t}%`);
+  const rows = await db()`
+    select t.name as track_name, l.idx, l.name, l.target, l.plain, l.how, l.regression, l.cue, l.ready
+    from track_level l
+    join track t on t.id = l.track_id
+    where lower(l.name) ilike any(${patterns})
+       or lower(coalesce(l.plain, '')) ilike any(${patterns})
+    order by t.sort_idx, l.idx
+    limit 4
+  `.catch(() => [] as Array<Record<string, string | number | null>>);
+
+  if (rows.length === 0) return null;
+
+  return rows
+    .map((r) => {
+      const lines = [
+        `• ${r.plain ?? r.name} (${r.track_name} nivå ${r.idx}, mål ${r.target})`,
+        r.how ? `  Så här: ${r.how}` : "",
+        r.cue ? `  Nyckel-cue: ${r.cue}` : "",
+        r.regression ? `  Om för svårt: ${r.regression}` : "",
+        r.ready ? `  Redo när: ${r.ready}` : ""
+      ].filter(Boolean);
+      return lines.join("\n");
+    })
+    .join("\n\n");
+}
+
+const COACH_STOPWORDS = new Set([
+  "hjälp", "behöver", "behover", "hur", "gör", "gor", "jag", "med", "vad",
+  "kan", "tips", "för", "for", "den", "det", "och", "att", "ska", "man",
+  "mig", "frågar", "fragar", "teknik", "övning", "ovning", "övningen",
+  "stand", "stance", "hålla", "halla", "klara", "träna", "trana", "göra"
+]);
+
 function normalizeExercise(raw: string) {
   const normalized = raw.trim().toLowerCase();
   return EXERCISE_ALIASES[normalized] ?? titleCaseExercise(normalized);

@@ -29,7 +29,8 @@ ${windowContext ? `\nAktiv kontext: ${windowContext}` : ""}
 export function buildCoachSystemPrompt(
   memories: Memory[],
   jargon: JargonPhrase[],
-  trainingContext?: string | null
+  trainingContext?: string | null,
+  exerciseCues?: string | null
 ) {
   const jarvisName = process.env.JARVIS_NAME || "Jarvis";
   const userName = process.env.JARVIS_USER_NAME || "Jimmy";
@@ -58,7 +59,7 @@ Så här guidar du en övning:
 - Röstvänligt och kompakt. Inga akademiska väggar av text. Punkta bara om det verkligen hjälper.
 - Det här är ett samtal: bjud in till en följdfråga om han kör fast, och svara på följdfrågor i samma anda.
 - Hitta inte på siffror som motsäger hans faktiska nivå nedan. Möt honom där han är.
-
+${exerciseCues ? `\nAppens officiella cues för övningen/övningarna han frågar om — använd DESSA som grund så boten och appen säger samma sak. Formulera i din egen ton, men ändra inte sak-innehållet:\n${exerciseCues}\n` : ""}
 ${trainingContext ? `${userName}s nuvarande träningsnivåer:\n${trainingContext}` : "Träningsnivåer okända just nu — coacha ändå, men fråga var han ligger om det behövs."}
 
 Sparade minnen om ${userName}:

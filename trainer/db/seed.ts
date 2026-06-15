@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 import { TIERS, TRACKS } from "./seed-content";
+import { levelGuide } from "../lib/level-guides";
 
 const USER_ID = "me";
 
@@ -38,6 +39,7 @@ async function main() {
       .insert(schema.track)
       .values({ id: t.id, name: t.name, goalLabel: t.goalLabel, sortIdx: i });
     for (const lvl of t.levels) {
+      const guide = levelGuide(t.id, lvl.idx);
       await db.insert(schema.trackLevel).values({
         id: `${t.id}-${lvl.idx}`,
         trackId: t.id,
@@ -45,6 +47,11 @@ async function main() {
         name: lvl.name,
         target: lvl.target,
         elite: lvl.elite ?? false,
+        plain: guide?.plain ?? null,
+        how: guide?.how ?? null,
+        regression: guide?.regression ?? null,
+        cue: guide?.cue ?? null,
+        ready: guide?.ready ?? null,
       });
     }
     await db
