@@ -131,6 +131,17 @@ export function parseTrainingCommand(input: string) {
     if (trackId) return { type: "completeLevel" as const, trackId };
   }
 
+  // Avancera kampanjen: "klarade veckan", "klara bossen", "bocka av kampanjveckan"
+  const campaignVerb =
+    plain.includes("klarade") || plain.includes("klarat") || plain.includes("bocka") ||
+    plain.includes("besegrade") || plain.includes("slog") || plain.includes("klara ");
+  const campaignNoun =
+    plain.includes("veckan") || plain.includes("vecka") || plain.includes("bossen") ||
+    plain.includes("boss") || plain.includes("kampanj");
+  if ((campaignVerb && campaignNoun) || plain === "/complete-campaign") {
+    return { type: "completeCampaign" as const };
+  }
+
   const completeKeywords = [
     "klarade",
     "klarat",
@@ -171,6 +182,18 @@ export function parseTrainingCommand(input: string) {
     plain.includes("skapa passet")
   ) {
     return { type: "createDraft" as const };
+  }
+
+  if (
+    plain === "kampanj" ||
+    plain === "/kampanj" ||
+    plain.includes("var ar jag i kampanj") ||
+    plain.includes("kampanjlage") ||
+    plain.includes("vilken vecka") ||
+    plain.includes("vilken boss") ||
+    (plain.includes("kampanj") && (plain.includes("status") || plain.includes("visa") || plain.includes("lage")))
+  ) {
+    return { type: "campaign" as const };
   }
 
   if (
@@ -221,6 +244,8 @@ export async function handleTrainingCommand(command: NonNullable<ReturnType<type
   if (command.type === "status") return getTrainingStatusReply();
   if (command.type === "open") return getOpenTrainingReply(command.view);
   if (command.type === "next") return getNextTrainingReply();
+  if (command.type === "campaign") return getCampaignReply();
+  if (command.type === "completeCampaign") return completeCampaignReply();
   if (command.type === "completeLevel") return completeNextLevelReply(command.trackId);
   if (command.type === "smartComplete") return handleSmartComplete(command.input);
   if (command.type === "createDraft") return createDraftedWorkoutSession();
@@ -307,14 +332,79 @@ Om du inte kan matcha påståendet till en specifik nivå med rimlig säkerhet (
   return null;
 }
 
-function getOpenTrainingReply(view: "pass" | "logg" | "nivaer" | "kampanj") {
+/** Länk till webb-appen om TRAINER_URL är satt, annars null (Telegram-först). */
+function appLink(view: string): string | null {
+  const base = process.env.TRAINER_URL?.replace(/\/+$/, "");
+  return base ? `${base}/${view}` : null;
+}
+
+async function getOpenTrainingReply(view: "pass" | "logg" | "nivaer" | "kampanj") {
   const labels = {
     pass: "dagens pass",
     logg: "loggen",
     nivaer: "nivåerna",
     kampanj: "kampanjen"
   };
-  return `Öppna ${labels[view]}: http://localhost:3000/${view}`;
+  const link = appLink(view);
+  if (link) return `Öppna ${labels[view]}: ${link}`;
+
+  // Ingen webb deployad → visa innehållet direkt här i Telegram.
+  if (view === "pass") return getTodayTrainingReply();
+  if (view === "kampanj") return getCampaignReply();
+  return getTrainingStatusReply();
+}
+
+async function getCampaignReply() {
+  const active = await getActiveCampaignItem();
+  const clearedRows = await db()`
+    select count(*)::int n from campaign_progress
+    where user_id = ${USER_ID} and cleared = true
+  `;
+  const clearedCount = Number(clearedRows[0]?.n ?? 0);
+
+  if (!active) {
+    return "🏆 Hela kampanjen är klar – alla tiers och bossar besegrade. Galet jobbat.";
+  }
+
+  const kind = active.type === "boss" ? "🔥 SLUTBOSS" : `Vecka ${active.weekIdx}`;
+  return [
+    `🗺️ Kampanjläge — Tier ${active.tierIdx}: ${active.tierName}`,
+    `${kind}: ${active.boss}`,
+    `Fokus: ${active.focus}`,
+    `Krav: ${active.criteria}`,
+    "",
+    `Avklarat hittills: ${clearedCount} steg.`,
+    "Klarat det? Skriv 'klarade veckan' (eller 'klarade bossen') så bockar jag av och låser upp nästa."
+  ].join("\n");
+}
+
+async function completeCampaignReply() {
+  const active = await getActiveCampaignItem();
+  if (!active) {
+    return "Det finns inget aktivt kampanjsteg att bocka av – allt är redan klart. 🏆";
+  }
+
+  await db()`
+    insert into campaign_progress (user_id, item_id, cleared)
+    values (${USER_ID}, ${active.id}, true)
+    on conflict (user_id, item_id) do update set cleared = true
+  `;
+
+  const clearedLabel =
+    active.type === "boss" ? `slutbossen ${active.boss}` : `vecka ${active.weekIdx} (${active.boss})`;
+  const next = await getActiveCampaignItem();
+
+  if (!next) {
+    return `✅ Bockade av ${clearedLabel}. Och därmed är HELA kampanjen klar. Du är elit, Jimmy. 🏆`;
+  }
+
+  const nextKind = next.type === "boss" ? `slutbossen ${next.boss}` : `vecka ${next.weekIdx}: ${next.boss}`;
+  return [
+    `✅ Bockade av ${clearedLabel}. Snyggt.`,
+    `Nästa: Tier ${next.tierIdx} — ${nextKind}.`,
+    `Fokus: ${next.focus}`,
+    "Skriv 'dagens pass' så bygger jag passet för det."
+  ].join("\n");
 }
 
 async function getNextTrainingReply() {
@@ -401,7 +491,7 @@ async function getTodayTrainingReply(location?: TrainingLocation) {
   if (!activeItem) {
     return [
       "Grattis! Du har klarat av alla Tiers och bossar i kampanjen! Du är en certifierad calisthenics-elit.",
-      "Fortsätt köra egna pass och logga dina framsteg i appen: http://localhost:3000/logg"
+      "Fortsätt köra egna pass och logga med t.ex. 'loggade pull-ups 8 7 6'."
     ].join("\n");
   }
 
@@ -418,10 +508,9 @@ async function getTodayTrainingReply(location?: TrainingLocation) {
   return [
     `${header}${generated.workoutText}`,
     "",
-    "💡 *Tips:* Skriv 'spara passet' så förbereder jag det här träningspasset direkt i din träningsdagbok!",
-    "",
-    "Öppna träningsappen: http://localhost:3000/pass"
-  ].join("\n");
+    "💡 *Tips:* Skriv 'spara passet' så lägger jag in passet i träningsdagboken — och logga resultat med t.ex. 'loggade frog stand 3x10'.",
+    appLink("pass") ? `\nÖppna träningsappen: ${appLink("pass")}` : ""
+  ].filter(Boolean).join("\n");
 }
 
 export async function createDraftedWorkoutSession() {
@@ -456,7 +545,8 @@ export async function createDraftedWorkoutSession() {
     `Done! Jag har förberett och lagt in följande övningar i din träningsdagbok för idag (${date}):`,
     ...generated.exercisesToLog.map(e => `- ${e.name} (${e.sets.length} set)`),
     "",
-    "Öppna loggen för att fylla i dina resultat: http://localhost:3000/logg"
+    "Fyll i dina resultat med t.ex. 'loggade pull-ups 8 7 6'." +
+      (appLink("logg") ? `\nEller öppna loggen: ${appLink("logg")}` : "")
   ].join("\n");
 }
 
