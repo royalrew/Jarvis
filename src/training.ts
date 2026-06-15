@@ -131,6 +131,13 @@ export function parseTrainingCommand(input: string) {
     if (trackId) return { type: "completeLevel" as const, trackId };
   }
 
+  // Backa/ångra en nivå om man markerat fel: "backa core", "ångra bål"
+  const backMatch = plain.match(/^(?:backa|angra|ta tillbaka|nollstall)\s+(.+)$/);
+  if (backMatch) {
+    const trackId = normalizeTrack(backMatch[1] ?? "");
+    if (trackId) return { type: "backLevel" as const, trackId };
+  }
+
   // Avancera kampanjen: "klarade veckan", "klara bossen", "bocka av kampanjveckan"
   const campaignVerb =
     plain.includes("klarade") || plain.includes("klarat") || plain.includes("bocka") ||
@@ -153,7 +160,11 @@ export function parseTrainingCommand(input: string) {
     "markera",
     "avklarade",
     "avklarat",
-    "klar"
+    "klar",
+    "fixade",
+    "fixat",
+    "nadde",
+    "tog"
   ];
 
   const words = plain.split(/[\s,.\-!]+/);
@@ -247,6 +258,7 @@ export async function handleTrainingCommand(command: NonNullable<ReturnType<type
   if (command.type === "campaign") return getCampaignReply();
   if (command.type === "completeCampaign") return completeCampaignReply();
   if (command.type === "completeLevel") return completeNextLevelReply(command.trackId);
+  if (command.type === "backLevel") return backLevelReply(command.trackId);
   if (command.type === "smartComplete") return handleSmartComplete(command.input);
   if (command.type === "createDraft") return createDraftedWorkoutSession();
   return logTrainingReply(command.exercise, command.sets, command.weight);
@@ -318,12 +330,18 @@ Om du inte kan matcha påståendet till en specifik nivå med rimlig säkerhet (
         return `Det matchar **${match.trackName} nivå ${match.levelIdx}: ${match.levelName}** (mål: ${match.target}), men du har redan markerat nivå ${reached} eller högre som klar på det spåret. Bra kört ändå!`;
       }
 
-      if (match.levelIdx !== null && match.levelIdx > nextLevelIdx) {
-        return `Det matchar **${match.trackName} nivå ${match.levelIdx}: ${match.levelName}** (mål: ${match.target}). Din nuvarande nivå är ${reached}. Vill du att jag markerar upp till nivå ${match.levelIdx} som klar? Skriv \`/complete-level ${match.trackId}\` (du behöver köra det ${match.levelIdx - reached} gånger).`;
-      }
+      // Hoppar mer än ett steg framåt: bocka av hela vägen upp till den nivån.
+      const targetIdx = match.levelIdx !== null && match.levelIdx > nextLevelIdx ? match.levelIdx : nextLevelIdx;
 
-      // Det matchar exakt nästa nivå
-      return `Det låter som du klarade **${match.trackName} nivå ${nextLevelIdx}: ${match.levelName}** (mål: ${match.target}). Snyggt! Vill du att jag markerar den som klar? Skriv \`/complete-level ${match.trackId}\`.`;
+      await db()`
+        insert into track_progress (user_id, track_id, reached)
+        values (${USER_ID}, ${match.trackId}, ${targetIdx})
+        on conflict (user_id, track_id) do update set reached = ${targetIdx}
+      `;
+
+      const jumped = targetIdx - reached;
+      const jumpNote = jumped > 1 ? ` (hoppade upp ${jumped} nivåer)` : "";
+      return `✅ Bockat av: **${match.trackName} nivå ${targetIdx}: ${match.levelName}** (mål: ${match.target})${jumpNote}. Snyggt jobbat! Säg "backa ${match.trackId}" om jag tog i för mycket.`;
     }
   } catch (error) {
     console.error("[Training Smart Match] error:", error);
@@ -443,6 +461,29 @@ async function completeNextLevelReply(trackId: string) {
   `;
 
   return `Markerat: ${row.name} nivå ${next}/${row.total} klar. Det påverkar vad jag föreslår i kommande pass.`;
+}
+
+async function backLevelReply(trackId: string) {
+  const rows = await db()`
+    select t.name, coalesce(p.reached, 0)::int as reached
+    from track t
+    left join track_progress p on p.track_id = t.id and p.user_id = ${USER_ID}
+    where t.id = ${trackId}
+    limit 1
+  `;
+
+  const row = rows[0];
+  if (!row) return `Jag hittar inget nivåspår som heter ${trackId}.`;
+
+  const back = Math.max(0, Number(row.reached) - 1);
+  await db()`
+    insert into track_progress (user_id, track_id, reached)
+    values (${USER_ID}, ${trackId}, ${back})
+    on conflict (user_id, track_id)
+    do update set reached = ${back}
+  `;
+
+  return `↩️ Backade ${row.name} till nivå ${back}. Ingen skam i att kalibrera om — bättre rätt än för snabbt.`;
 }
 
 async function getActiveCampaignItem() {
