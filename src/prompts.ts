@@ -26,6 +26,47 @@ ${windowContext ? `\nAktiv kontext: ${windowContext}` : ""}
 `.trim();
 }
 
+export function buildCoachSystemPrompt(
+  memories: Memory[],
+  jargon: JargonPhrase[],
+  trainingContext?: string | null
+) {
+  const jarvisName = process.env.JARVIS_NAME || "Jarvis";
+  const userName = process.env.JARVIS_USER_NAME || "Jimmy";
+
+  const memoryBlock =
+    memories.length === 0
+      ? "Inga sparade minnen ännu."
+      : memories.map((memory) => `- ${memory.value}`).join("\n");
+
+  const jargonBlock =
+    jargon.length === 0
+      ? ""
+      : jargon.map((item) => `- "${item.phrase}" = ${item.meaning}`).join("\n");
+
+  return `
+Du är ${jarvisName}, ${userName}s personliga AI och calisthenics-coach i programmet "Vägen till flaggan" (mål: flagga, front lever, planche, muscle-up, handstående m.fl.).
+
+${userName} har bett om hjälp med HUR en övning utförs. Coacha honom konkret och rakt, i din vanliga ton (självsäker, lite kaxig, aldrig nedlåtande).
+
+Så här guidar du en övning:
+- Säg kort vad övningen tränar och var den hör hemma (vilket spår/skill).
+- 2–4 konkreta steg eller tekniknycklar (cues) — det viktigaste först.
+- Det vanligaste felet och hur han undviker det.
+- Om den är för svår just nu: ge en lättare regression att börja på.
+- Avsluta med "redo när"-kvittot: hur han vet att han kan gå vidare.
+- Röstvänligt och kompakt. Inga akademiska väggar av text. Punkta bara om det verkligen hjälper.
+- Det här är ett samtal: bjud in till en följdfråga om han kör fast, och svara på följdfrågor i samma anda.
+- Hitta inte på siffror som motsäger hans faktiska nivå nedan. Möt honom där han är.
+
+${trainingContext ? `${userName}s nuvarande träningsnivåer:\n${trainingContext}` : "Träningsnivåer okända just nu — coacha ändå, men fråga var han ligger om det behövs."}
+
+Sparade minnen om ${userName}:
+${memoryBlock}
+${jargonBlock ? `\nJargong (krydda sparsamt):\n${jargonBlock}` : ""}
+`.trim();
+}
+
 export function buildSystemPrompt(
   memories: Memory[],
   jargon: JargonPhrase[],

@@ -1,4 +1,4 @@
-export type Intent = "chat" | "note" | "code" | "calendar" | "training";
+export type Intent = "chat" | "note" | "code" | "calendar" | "training" | "coaching";
 
 export type IntentResult = {
   intent: Intent;
@@ -28,12 +28,13 @@ export async function classifyIntent(text: string): Promise<IntentResult> {
           {
             role: "system",
             content: [
-              'Klassificera meddelandet i ett intent. Svara med JSON: {"intent":"chat|note|code|calendar|training","confidence":0.0-1.0}',
+              'Klassificera meddelandet i ett intent. Svara med JSON: {"intent":"chat|note|code|calendar|training|coaching","confidence":0.0-1.0}',
               '"chat" — samtal, frågor, diskussion, tankar högt',
               '"note" — vill spara en notering, tanke, påminnelse eller faktum för senare (inte kalenderbokningar)',
               '"code" — vill ha kod skriven: funktion, skript, klass, SQL, config',
               '"calendar" — vill se, boka, lägga till, flytta, ändra, avboka eller ta bort saker i sin kalender',
-              '"training" — frågor om träning/pass/övningar: vad ska jag träna, har vi pass, nästa pass, dagens pass, hur ligger jag till med träningen, planen för passet'
+              '"training" — vill se sitt PASS eller sin status: vad ska jag träna, har vi pass, nästa pass, dagens pass, hur ligger jag till',
+              '"coaching" — vill ha HJÄLP MED TEKNIK eller hur en övning utförs: hur gör jag frog stand, hjälp med L-sit, teknik för planche, jag faller framåt i handstående, hur tränar jag upp X, vad gör jag för att klara Y'
             ].join("\n")
           },
           { role: "user", content: text }
@@ -51,7 +52,7 @@ export async function classifyIntent(text: string): Promise<IntentResult> {
 
     const raw = data.choices?.[0]?.message?.content || "{}";
     const parsed = JSON.parse(raw) as { intent?: string; confidence?: number };
-    const intent = (["chat", "note", "code", "calendar", "training"].includes(parsed.intent ?? "") ? parsed.intent : "chat") as Intent;
+    const intent = (["chat", "note", "code", "calendar", "training", "coaching"].includes(parsed.intent ?? "") ? parsed.intent : "chat") as Intent;
     return { intent, confidence: parsed.confidence ?? 0.9 };
   } catch {
     return { intent: "chat", confidence: 1 };

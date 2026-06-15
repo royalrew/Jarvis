@@ -555,6 +555,13 @@ async function getProgressSummary() {
   };
 }
 
+export async function getCoachContext(): Promise<string> {
+  const status = await getProgressSummary();
+  return status.tracks
+    .map((track) => `- ${track.name}: nivå ${track.reached}/${track.total}`)
+    .join("\n");
+}
+
 function normalizeExercise(raw: string) {
   const normalized = raw.trim().toLowerCase();
   return EXERCISE_ALIASES[normalized] ?? titleCaseExercise(normalized);

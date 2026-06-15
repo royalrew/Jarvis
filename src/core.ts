@@ -14,9 +14,9 @@ import type { ImprovementSuggestion } from "./types.js";
 import { getJarvisReply } from "./llm.js";
 import { classifyIntent } from "./intent.js";
 import { findRelevantMemories, extractAndStoreMemories, embedAndStoreMemory } from "./memory.js";
-import { buildSystemPrompt, buildCodeSystemPrompt } from "./prompts.js";
+import { buildSystemPrompt, buildCodeSystemPrompt, buildCoachSystemPrompt } from "./prompts.js";
 import { formatAgenda, getCalendarAgenda, getNamedRange, handleSmartCalendar } from "./calendar.js";
-import { handleTrainingCommand, parseTrainingCommand } from "./training.js";
+import { getCoachContext, handleTrainingCommand, parseTrainingCommand } from "./training.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -218,6 +218,15 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
         const message = error instanceof Error ? error.message : String(error);
         return { reply: `Träningsdelen är inte redo: ${message}`, shouldContinue: true, intent };
       }
+    }
+
+    if (intent === "coaching") {
+      const trainingContext = await getCoachContext().catch(() => "");
+      const coachPrompt = buildCoachSystemPrompt(relevantMemories, await getJargon(), trainingContext);
+      const reply = await getJarvisReply(coachPrompt, await getRecentConversation(), imageBase64);
+      await addConversation("assistant", reply);
+      extractAndStoreMemories(line, reply).catch(() => {});
+      return { reply, shouldContinue: true, intent };
     }
 
     const jargon = await getJargon();
