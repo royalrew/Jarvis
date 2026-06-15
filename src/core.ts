@@ -207,6 +207,19 @@ export async function handleJarvisInput(line: string, imageBase64?: string, wind
       return { reply, shouldContinue: true, intent };
     }
 
+    if (intent === "training") {
+      try {
+        const reply = await handleTrainingCommand({ type: "today" });
+        if (reply) {
+          await addConversation("assistant", reply);
+          return { reply, shouldContinue: true, intent };
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { reply: `Träningsdelen är inte redo: ${message}`, shouldContinue: true, intent };
+      }
+    }
+
     const jargon = await getJargon();
     const systemPrompt =
       intent === "code"

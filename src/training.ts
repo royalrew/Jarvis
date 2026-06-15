@@ -168,7 +168,14 @@ export function parseTrainingCommand(input: string) {
     (plain.includes("vad ska jag") && plain.includes("idag")) ||
     plain.includes("dagens pass") ||
     plain.includes("trana idag") ||
-    plain.includes("traning idag")
+    plain.includes("traning idag") ||
+    plain.includes("traningspass") ||
+    plain.includes("nasta pass") ||
+    (plain.includes("pass") &&
+      (plain.includes("har vi") ||
+        plain.includes("nasta") ||
+        plain.includes("idag") ||
+        plain.includes("imorgon")))
   ) {
     return { type: "today" as const };
   }
