@@ -1,6 +1,7 @@
 import { handleJarvisInput } from "./core.js";
 import { transcribeAudio } from "./transcription.js";
 import { generateTTSBuffer } from "./llm.js";
+import { BRAK_REMINDER_MESSAGE, startDailyReminder } from "./reminders.js";
 
 /**
  * Startar polling-loopen för Telegram-boten om API-nycklar finns konfigurerade.
@@ -24,6 +25,16 @@ export function startTelegramBot() {
   console.log(`[Telegram] Startar bot. Låst till User ID: ${allowedUser}`);
   let offset = 0;
   let running = true;
+  const stopBrakReminder = startDailyReminder({
+    hour: 5,
+    minute: 0,
+    timeZone: "Europe/Stockholm",
+    label: "BRAK",
+    message: BRAK_REMINDER_MESSAGE,
+    onReminder: (message) => sendTelegramMessage(allowedUser, message, token)
+  });
+
+  console.log("[Telegram] Daglig BRAK-påminnelse aktiv kl. 05:00 Europe/Stockholm.");
 
   async function poll() {
     while (running) {
@@ -64,6 +75,7 @@ export function startTelegramBot() {
 
   return () => {
     running = false;
+    stopBrakReminder();
     console.log("[Telegram] Polling-loop stoppad.");
   };
 }

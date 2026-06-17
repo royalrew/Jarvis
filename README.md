@@ -109,6 +109,8 @@ JARVIS_TELEGRAM_VOICE=true
 
 `npm run desktop` startar Telegram-boten i bakgrunden. `npm run dev` gör det också, så länge variablerna ovan finns.
 
+När Telegram-boten är igång skickar Jarvis en daglig BRAK-påminnelse kl. 05:00 Europe/Stockholm med armhävningar, ryggresningar, jägarvila och knäböj.
+
 Kalendern läser en privat iCal/ICS-länk:
 
 ```txt
