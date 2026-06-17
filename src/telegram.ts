@@ -1,7 +1,7 @@
 import { handleJarvisInput } from "./core.js";
 import { transcribeAudio } from "./transcription.js";
 import { generateTTSBuffer } from "./llm.js";
-import { BRAK_REMINDER_MESSAGE, startDailyReminder } from "./reminders.js";
+import { getBrakReminderMessage, startDailyReminder } from "./reminders.js";
 
 /**
  * Startar polling-loopen för Telegram-boten om API-nycklar finns konfigurerade.
@@ -30,7 +30,7 @@ export function startTelegramBot() {
     minute: 0,
     timeZone: "Europe/Stockholm",
     label: "BRAK",
-    message: BRAK_REMINDER_MESSAGE,
+    message: () => getBrakReminderMessage("Europe/Stockholm"),
     onReminder: (message) => sendTelegramMessage(allowedUser, message, token)
   });
 
