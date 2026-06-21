@@ -1,10 +1,12 @@
 import "dotenv/config";
 import { initDb } from "./db.js";
 import { initFrenchDb } from "./french/db.js";
+import { seedCurriculumIfNeeded } from "./french/curriculum.js";
 import { startTelegramBot } from "./telegram.js";
 
 await initDb();
 await initFrenchDb();
+await seedCurriculumIfNeeded();
 
 const stopTelegramBot = startTelegramBot();
 

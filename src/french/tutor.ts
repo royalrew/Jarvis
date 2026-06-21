@@ -80,6 +80,12 @@ export async function applyTurn(turn: TutorTurn, channel: Channel): Promise<Turn
     errors.push({ category: e.category, correction: e.correction });
   }
 
+  // 4. Graderade vi något? Kör progressiv upplåsning (kan tända nästa modul).
+  if (outcomes.some((o) => o.applied)) {
+    const { advanceCurriculum } = await import("./curriculum.js");
+    await advanceCurriculum();
+  }
+
   return {
     reply: turn.reply,
     explanationSv: turn.explanation_sv,

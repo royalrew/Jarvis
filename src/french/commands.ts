@@ -12,6 +12,7 @@ import {
 } from "./db.js";
 import { handleTutorTurn, formatTurn } from "./tutor.js";
 import { detectFrenchIntent } from "./llm.js";
+import { renderCourseMap, seedCurriculum } from "./curriculum.js";
 import { buildDailyLesson, buildGrandTest, renderQuestion, type QuizPayload } from "./lessons.js";
 import { handleQuizAnswer } from "./quiz.js";
 import { todayStockholm } from "./time.js";
@@ -36,7 +37,7 @@ export interface FrenchInput {
 const FRENCH_COMMANDS = new Set([
   "/franska", "/français", "/francais",
   "/lektion", "/delprov", "/streak", "/svaga", "/uttal", "/läge", "/lage",
-  "/avbryt", "/sluta"
+  "/kurs", "/seed", "/avbryt", "/sluta"
 ]);
 
 export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promise<boolean> {
@@ -71,6 +72,17 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
       case "/delprov":
         await startQuiz(io);
         return true;
+
+      case "/kurs":
+        await io.send(await renderCourseMap(), true);
+        return true;
+
+      case "/seed": {
+        await io.send("Seedar läroplanen…");
+        const { items, modules } = await seedCurriculum();
+        await io.send(`✓ Läroplan på plats: ${items} ord i ${modules} moduler. Skriv /kurs för kartan.`);
+        return true;
+      }
 
       case "/streak":
         await io.send(await renderStreak(), true);

@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "bot": "tsx src/bot.ts",
+    "french:seed": "tsx scripts/seed-french.ts",
     "start": "node dist/bot.js",
     "desktop": "npm run build && node scripts/run-electron.mjs",
     "check": "tsc --noEmit",

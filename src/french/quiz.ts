@@ -71,6 +71,9 @@ async function finishQuiz(quizId: string, payload: QuizPayload): Promise<QuizSte
   await setLessonStatus(quizId, "graded");
   await updateState({ activeQuizId: null });
 
+  const { advanceCurriculum } = await import("./curriculum.js");
+  await advanceCurriculum();
+
   const quizLemmas = [...new Set(payload.questions.map((q) => q.lemma))];
   const masteredAll = await getMasteredLemmas(MASTERY_STABILITY);
   const newlyMastered = masteredAll.filter((l) => quizLemmas.includes(l));

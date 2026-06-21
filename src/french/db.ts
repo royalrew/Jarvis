@@ -83,6 +83,14 @@ export async function initFrenchDb() {
     )
   `;
 
+  // Läroplans-koppling (CEFR-ryggrad). NULL för ord som föds ur fri konversation.
+  await sql`ALTER TABLE fr_items ADD COLUMN IF NOT EXISTS level TEXT`;
+  await sql`ALTER TABLE fr_items ADD COLUMN IF NOT EXISTS module TEXT`;
+  await sql`ALTER TABLE fr_items ADD COLUMN IF NOT EXISTS seq INTEGER`;
+  // unlocked=false = ligger i kursen men ännu inte upplåst (progressiv frigörelse).
+  // Konversationsord är alltid true så de stannar i rotationen som förr.
+  await sql`ALTER TABLE fr_items ADD COLUMN IF NOT EXISTS unlocked BOOLEAN NOT NULL DEFAULT true`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS fr_facets (
       id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -241,7 +249,7 @@ export async function getDueFacets(limit = 20, kinds: FacetKind[] = FACET_KINDS)
   const rows = await sql`
     SELECT f.*, i.lemma AS lemma, i.meta AS meta
     FROM fr_facets f JOIN fr_items i ON i.id = f.item_id
-    WHERE f.due <= now() AND f.kind = ANY(${kinds})
+    WHERE f.due <= now() AND f.kind = ANY(${kinds}) AND i.unlocked = true
     ORDER BY f.due ASC
     LIMIT ${limit}
   `;
