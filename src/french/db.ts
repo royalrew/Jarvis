@@ -178,6 +178,17 @@ export async function initFrenchDb() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+
+  // Ett långsiktigt mysterium med separat hemlig bibel och offentlig detektivbok.
+  await sql`
+    CREATE TABLE IF NOT EXISTS fr_mystery (
+      id           INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      bible        JSONB NOT NULL,
+      public_state JSONB NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','solved')),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 }
 
 // --------------------------------------------------------------------------

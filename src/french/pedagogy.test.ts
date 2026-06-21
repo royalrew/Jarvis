@@ -4,10 +4,14 @@ import { lessonPedagogy } from "./pedagogy.js";
 
 test("första scenen har minimal aktiv belastning", () => {
   const policy = lessonPedagogy("A1 – Hälsningar", true);
-  assert.equal(policy.targetWords, 2);
+  assert.equal(policy.targetWords, 1);
   assert.equal(policy.leechWords, 0);
-  assert.equal(policy.maxNewItems, 1);
-  assert.equal(policy.sentenceStarters, 3);
+  assert.equal(policy.maxNewItems, 0);
+  assert.equal(policy.sentenceStarters, 1);
+  assert.equal(policy.frenchMaxWords, 25);
+  assert.equal(policy.responseMaxWords, 4);
+  assert.equal(policy.translateAllFrench, true);
+  assert.ok(policy.frenchMaxWords < lessonPedagogy("A1").frenchMaxWords);
 });
 
 test("ordbudgeten växer kontrollerat med nivån", () => {

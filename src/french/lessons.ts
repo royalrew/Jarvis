@@ -16,6 +16,7 @@ import { storyLessonPrompt } from "./prompts.js";
 import { CAST, TRAVEL_INTERESTS, getStory, initStoryIfNeeded, updateStory, appendBeat, summarizeRecentBeats } from "./story.js";
 import { todayStockholm } from "./time.js";
 import { lessonPedagogy } from "./pedagogy.js";
+import { getMysteryLessonContext, recordMysteryScene } from "./mystery.js";
 
 /**
  * Lektions- och provbyggare (M4/M5). Allt urval är deterministiskt — LLM:en
@@ -46,19 +47,24 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
   const current = await getCurrentModule();
   let targetWords: string[] = [];
   let levelLabel = "A1 nybörjare";
+  let gentleStart = story.day === 0;
   if (current) {
     const items = await getModuleItems(current.module);
     levelLabel = `${current.module.split(".")[0]} – ${current.theme}`;
-    const policy = lessonPedagogy(levelLabel, story.day === 0);
+    gentleStart = current.module === "A1.1" && story.day < 3;
+    const policy = lessonPedagogy(levelLabel, gentleStart);
     targetWords = items.filter((it) => !it.mastered).slice(0, policy.targetWords).map((it) => `${it.lemma} (${it.meta.translation})`);
   } else {
-    const policy = lessonPedagogy(levelLabel, story.day === 0);
+    const { getLearnerLevel } = await import("./curriculum.js");
+    levelLabel = `${await getLearnerLevel()} – repetition och fördjupning`;
+    const policy = lessonPedagogy(levelLabel, gentleStart);
     const due = await getDueFacets(policy.targetWords);
     targetWords = due.map((f) => `${f.lemma} (${f.meta.translation})`);
   }
 
-  const policy = lessonPedagogy(levelLabel, story.day === 0);
+  const policy = lessonPedagogy(levelLabel, gentleStart);
   const leeches = await getLeechFacets(policy.leechWords);
+  const mysteryContext = await getMysteryLessonContext(levelLabel, story.day);
 
   // Pinna de leeches vi väver in, så de räknas som dagens fokus.
   for (const l of leeches) await pinLeech(l.id, true);
@@ -74,7 +80,9 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     targetWords,
     leechWords,
     maxNewItems: policy.maxNewItems,
-    sentenceStarters: policy.sentenceStarters
+    sentenceStarters: policy.sentenceStarters,
+    wordBankMax: policy.wordBankMax,
+    mysteryContext
   });
 
   // Spara nya ord lektionen introducerar (inga reviews än).
@@ -95,6 +103,7 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     sceneKind: lesson.scene.kind
   });
   await updateStory({ location: newLocation, nextHint: lesson.story.next_hint, day: newDay });
+  await recordMysteryScene(lesson.mystery, mysteryContext.eligibleClue?.id);
 
   const facetIds = leeches.map((l) => l.id);
   const lessonId = await createLesson("daily", date, lesson.place.name, facetIds, {
@@ -108,6 +117,10 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     openingReply: lesson.reply,
     missionSv: lesson.mission_sv,
     levelLabel,
+    gentleStart,
+    frenchMaxWords: policy.frenchMaxWords,
+    responseMaxWords: policy.responseMaxWords,
+    translateAllFrench: policy.translateAllFrench,
     activeWords: [...targetWords, ...leechWords]
   });
   await updateState({ activeLessonId: lessonId, activeQuizId: null, chatActive: false, lastLessonDate: date });

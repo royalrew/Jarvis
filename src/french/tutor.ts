@@ -11,6 +11,7 @@ import { tutorSystemPrompt } from "./prompts.js";
 import { getState } from "./db.js";
 import { getLesson } from "./db.js";
 import { CAST, TRAVEL_INTERESTS, getStory, summarizeRecentBeats } from "./story.js";
+import { getMysteryTutorContext } from "./mystery.js";
 
 /**
  * Turn-orkestreringen (M2). Binder ihop LLM-kontraktet med det deterministiska
@@ -114,11 +115,19 @@ async function buildContext(channel: Channel, activeLessonId: string | null): Pr
   const activeLesson = activeLessonId ? await getLesson(activeLessonId) : null;
   const sceneTurns = Number(activeLesson?.payload?.sceneTurns ?? 0);
   const lessonPhase = activeLesson?.payload?.lessonPhase === "recall" ? "recall" : "scene";
-  const levelLabel = typeof activeLesson?.payload?.levelLabel === "string" ? activeLesson.payload.levelLabel : "A1";
+  let levelLabel = typeof activeLesson?.payload?.levelLabel === "string" ? activeLesson.payload.levelLabel : "";
+  if (!levelLabel) {
+    const { getLearnerLevel } = await import("./curriculum.js");
+    levelLabel = await getLearnerLevel();
+  }
   const learnerSignal = typeof activeLesson?.payload?.learnerSignal === "string" ? activeLesson.payload.learnerSignal : "unknown";
+  const gentleStart = activeLesson?.payload?.gentleStart === true;
+  const frenchMaxWords = Number(activeLesson?.payload?.frenchMaxWords ?? 70);
+  const responseMaxWords = Number(activeLesson?.payload?.responseMaxWords ?? 10);
   const activeWords = Array.isArray(activeLesson?.payload?.activeWords)
     ? activeLesson.payload.activeWords.filter((word): word is string => typeof word === "string")
     : [];
+  const mysteryContext = await getMysteryTutorContext(levelLabel);
   const openingReply = typeof activeLesson?.payload?.openingReply === "string" ? activeLesson.payload.openingReply : "";
   const missionSv = typeof activeLesson?.payload?.missionSv === "string" ? activeLesson.payload.missionSv : "";
   const transcript = Array.isArray(activeLesson?.payload?.transcript)
@@ -132,9 +141,13 @@ async function buildContext(channel: Channel, activeLessonId: string | null): Pr
     `Nuvarande plats: ${story.location ?? "resan har inte börjat"}`,
     story.nextHint ? `Öppen tråd: ${story.nextHint}` : "",
     summarizeRecentBeats(story, 6),
+    mysteryContext,
     activeLesson ? [
       `AKTIV LEKTION: nivå ${levelLabel}, fas ${lessonPhase}, Jimmy har svarat ${sceneTurns} gånger.`,
       `Senaste prestationssignal: ${learnerSignal}. Anpassa mängden svensk stöttning och fransk komplexitet därefter, utan att kommentera signalen.`,
+      gentleStart
+        ? `MIKRODOS FÖR ABSOLUT NYBÖRJARE: ditt reply får innehålla högst ${frenchMaxWords} mycket enkla franska ord och en enda fråga som kan besvaras med högst ${responseMaxWords} ord. explanation_sv ska översätta allt franskt du skriver. Kräv aldrig en hel översättning från svenska.`
+        : "",
       activeWords.length ? `Aktiva ord att locka fram och bedöma, inte ersätta med fler nya ord: ${activeWords.join(", ")}` : "",
       lessonPhase === "recall"
         ? "ÅTERKALLNINGSFAS: bedöm Jimmys korta återberättande, ge kompakt återkoppling, återanvänd målord, avsluta scenen och fyll scene_complete=true samt story_update. Ställ ingen ny scenfråga."

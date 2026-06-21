@@ -19,6 +19,7 @@ import { finalizeScene, getStory, resetStory } from "./story.js";
 import { buildDailyLesson, buildGrandTest, buildModuleCheckpoint, renderQuestion, type QuizPayload } from "./lessons.js";
 import { handleQuizAnswer } from "./quiz.js";
 import { todayStockholm } from "./time.js";
+import { addMysteryTheory, judgeFinalTheory, renderMystery, resetMystery } from "./mystery.js";
 
 /**
  * Kommando-ytan + routern (M6-lim). `maybeHandleFrench` är den enda ingången
@@ -42,6 +43,7 @@ const FRENCH_COMMANDS = new Set([
   "/lektion", "/delprov", "/streak", "/svaga", "/uttal", "/läge", "/lage",
   "/kurs", "/seed", "/avstämning", "/avstamning",
   "/story", "/resa", "/berättelse", "/berattelse", "/nystart",
+  "/mysterium", "/mystery", "/teori", "/slutteori",
   "/hjälp", "/hjalp", "/meny", "/avbryt", "/sluta"
 ]);
 
@@ -53,6 +55,7 @@ const BUTTON_TO_COMMAND: Record<string, string> = {
   "📋 Testa mig": "/avstämning",
   "🔥 Streak": "/streak",
   "💬 Prata franska": "/franska",
+  "🔎 Mysteriet": "/mysterium",
   "❓ Hjälp": "/hjalp"
 };
 
@@ -62,7 +65,7 @@ export const FRENCH_KEYBOARD = {
     [{ text: "📖 Lektion" }, { text: "🧳 Min resa" }],
     [{ text: "🗺️ Kurs" }, { text: "📋 Testa mig" }],
     [{ text: "🔥 Streak" }, { text: "💬 Prata franska" }],
-    [{ text: "❓ Hjälp" }]
+    [{ text: "🔎 Mysteriet" }, { text: "❓ Hjälp" }]
   ],
   resize_keyboard: true,
   is_persistent: true
@@ -81,16 +84,24 @@ export const FRENCH_BOT_COMMANDS = [
   { command: "franska", description: "💬 Slå på fritt franskt samtal" },
   { command: "lage", description: "🔁 Växla immersion/studie" },
   { command: "nystart", description: "🆕 Börja en ny resa" },
+  { command: "mysterium", description: "🔎 Ledtrådar och dina teorier" },
+  { command: "slutteori", description: "🔐 Pröva mysteriets slutlösning" },
   { command: "hjalp", description: "❓ Visa allt du kan göra" },
   { command: "sluta", description: "👋 Avsluta franska-läget" }
 ];
 
 /** Naturligt språk → kommando (distinkta svenska fraser, inget LLM-anrop). */
-function naturalCommand(text: string): { command: string; arg: string } | null {
+export function naturalCommand(text: string): { command: string; arg: string } | null {
   const t = text.toLowerCase();
   const has = (...ks: string[]) => ks.some((k) => t.includes(k));
+  const finalTheory = text.match(/^\s*ma th[ée]orie (?:est|:)\s*(.+)$/i);
+  if (finalTheory?.[1]) return { command: "/slutteori", arg: text.trim() };
+  const theory = text.match(/^\s*min teori (?:är|ar|:)\s*(.+)$/i);
+  if (theory?.[1]) return { command: "/teori", arg: theory[1].trim() };
   if (has("testa mig", "förhör", "forhor", "avstämning", "avstamning", "läxförhör", "laxforhor")) return { command: "/avstämning", arg: "" };
+  if (has("lära mig franska", "lara mig franska", "lär mig franska", "lar mig franska", "öva franska", "ova franska", "träna franska", "trana franska", "studera franska")) return { command: "/lektion", arg: "" };
   if (has("min resa", "visa resan", "berättelse", "berattelse", "reserutt", "var har jag varit")) return { command: "/story", arg: "" };
+  if (has("mysteriet", "visa ledtrådar", "mina ledtrådar", "detektivbok")) return { command: "/mysterium", arg: "" };
   if (has("nästa lektion", "nasta lektion", "ny lektion", "dagens lektion", "fortsätt resan", "fortsatt resan")) return { command: "/lektion", arg: "" };
   if (has("min kurs", "kurskarta", "var är jag i kursen", "hur långt har jag", "hur langt har jag", "kursöversikt", "kursoversikt")) return { command: "/kurs", arg: "" };
   if (has("delprov", "grand test", "veckans prov", "kör ett prov", "kor ett prov")) return { command: "/delprov", arg: "" };
@@ -168,8 +179,11 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
       .filter((word): word is string => typeof word === "string")
       .slice(0, 3)
       .map((word) => word.replace(/\s*\([^)]*\)$/, ""));
+    const gentleStart = lesson?.payload?.gentleStart === true;
     const recall = enterRecall
-      ? `\n\n🎒 *Innan du går vidare*\nBerätta mycket kort på franska vad som hände eller vad du gjorde.${recallWords.length ? ` Försök få med: *${recallWords.join(" · ")}*.` : ""}`
+      ? gentleStart
+        ? `\n\n🎒 *Ett sista litet steg*\nSkriv eller säg dagens franska ord en gång.${recallWords.length ? ` Ledtråd: det betyder ${activeWords[0]?.match(/\(([^)]*)\)/)?.[1] ?? "dagens uttryck"}.` : ""}`
+        : `\n\n🎒 *Innan du går vidare*\nBerätta mycket kort på franska vad som hände eller vad du gjorde.${recallWords.length ? ` Försök få med: *${recallWords.join(" · ")}*.` : ""}`
       : "";
     const ending = lessonComplete ? "\n\n✅ *Kapitel klart.* Orden återkommer senare i resan, med mindre hjälp." : "";
     await io.send(formatTurn(result) + recall + ending, true);
@@ -187,6 +201,13 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
   // 5. Idle: öva/fråga-intent.
   const intent = await detectFrenchIntent(text);
   if (intent.action !== "none") {
+    if (intent.action === "learn") {
+      await io.send("Jag startar en stöttad lektion från din nuvarande nivå…");
+      const lesson = await buildDailyLesson();
+      for (const message of lesson.messages) await io.send(message, true);
+      await io.speak?.(lesson.reply);
+      return true;
+    }
     if (intent.action === "practice") {
       await updateState({ chatActive: true, activeLessonId: null, activeQuizId: null });
     }
@@ -232,8 +253,35 @@ async function runFrenchCommand(command: string, arg: string, io: FrenchIO): Pro
       await io.send(await renderStory(), true);
       return true;
 
+    case "/mysterium":
+    case "/mystery":
+      await io.send(await renderMystery(), true);
+      return true;
+
+    case "/teori":
+      if (!arg) {
+        await io.send("Skriv _min teori är …_ så sparar jag tanken i detektivboken.", true);
+        return true;
+      }
+      await addMysteryTheory(arg);
+      await io.send(`🔎 Teorin är sparad: _${arg}_`, true);
+      return true;
+
+    case "/slutteori": {
+      if (!arg) {
+        await io.send("När finalen är upplåst: presentera hela beviskedjan på franska med _Ma théorie est…_", true);
+        return true;
+      }
+      await addMysteryTheory(arg);
+      const verdict = await judgeFinalTheory(arg);
+      const icon = verdict.solved ? "✅" : verdict.unlocked ? "🧩" : "🔒";
+      await io.send(`${icon} ${verdict.feedbackSv}`, true);
+      return true;
+    }
+
     case "/nystart":
       await resetStory(arg || undefined);
+      await resetMystery();
       resetHistory();
       await updateState({ chatActive: false, activeLessonId: null, activeQuizId: null, lastScenario: null });
       await io.send(
@@ -314,6 +362,7 @@ function helpText(): string {
     "📋 *Testa mig* — läxförhör på delen du läser",
     "🔥 *Streak* — dagar i rad + statistik",
     "💬 *Prata franska* — fritt samtal",
+    "🔎 *Mysteriet* — detektivboken, ledtrådar och teorier",
     "",
     'Du kan också bara skriva t.ex. _"nästa lektion"_, _"visa min resa"_, _"testa mig"_ eller _"vad betyder oui"_.'
   ].join("\n");

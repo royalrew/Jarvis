@@ -352,6 +352,14 @@ export async function getCurrentModule(): Promise<{ module: string; theme: strin
   return { module: current.module, theme: "" };
 }
 
+/** Aktuell eller senast uppnådd CEFR-nivå, även när alla moduler är klara. */
+export async function getLearnerLevel(): Promise<string> {
+  const stats = await getModuleStats();
+  const current = stats.find((module) => module.unlocked && module.mastered < module.total);
+  const reached = current ?? [...stats].reverse().find((module) => module.unlocked);
+  return reached?.module.match(/^(A1|A2|B1|B2|C1|C2)/)?.[1] ?? "A1";
+}
+
 // --------------------------------------------------------------------------
 // /kurs – kartan med din position
 // --------------------------------------------------------------------------

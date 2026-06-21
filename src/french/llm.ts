@@ -1,4 +1,5 @@
 import type { Channel } from "./db.js";
+import type { MysteryLessonContext, MysteryLessonResult } from "./mystery.js";
 
 /**
  * LLM-kontraktet (M2). LLM:en bedömer och klassificerar — extraherar reviews,
@@ -189,6 +190,7 @@ export interface StoryLesson {
   culture_sv: string; // Annas kultur-/historieberättelse
   mission_sv: string;
   response_support: ResponseSupport;
+  mystery: MysteryLessonResult | null;
   place: StoryPlace;
   scene: { kind: string; title: string };
   new_items: TutorNewItem[];
@@ -206,6 +208,8 @@ export interface StoryLessonInput {
   leechWords: string[];
   maxNewItems: number;
   sentenceStarters: number;
+  wordBankMax: number;
+  mysteryContext: MysteryLessonContext;
 }
 
 /**
@@ -230,6 +234,7 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     input.leechWords.length ? `Få också med dessa svaga ord: ${input.leechWords.join(", ")}` : "",
     `Du får introducera högst ${input.maxNewItems} helt nya aktiva ord utöver målord och svaga ord. Övriga miljöord är passiv exponering och ska inte läggas i new_items.`,
     `Svarsstödet ska innehålla exakt ${input.sentenceStarters} nivåanpassade meningsstarter och bara ord/fraser som redan förekommer i scenen, språknyckeln eller målordlistan.`,
+    `Mysteriekontext (den enda tillåtna sanningen om mysteriet): ${JSON.stringify(input.mysteryContext)}`,
     `Detta är dag ${input.day + 1} på resan.`
   ].filter(Boolean).join("\n");
 
@@ -257,22 +262,27 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     JSON.parse(data.choices?.[0]?.message?.content || "{}"),
     input.maxNewItems,
     input.sentenceStarters,
+    input.wordBankMax,
     [...input.targetWords, ...input.leechWords]
   );
 }
 
-function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, activeWords: string[]): StoryLesson {
+function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, maxWordBank: number, activeWords: string[]): StoryLesson {
   const o = (obj ?? {}) as Record<string, unknown>;
   const place = (o.place ?? {}) as Record<string, unknown>;
   const scene = (o.scene ?? {}) as Record<string, unknown>;
   const story = (o.story ?? {}) as Record<string, unknown>;
   const support = (o.response_support ?? {}) as Record<string, unknown>;
+  const mystery = (o.mystery ?? {}) as Record<string, unknown>;
   const strings = (value: unknown, max: number) => Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim()).slice(0, max)
     : [];
   const generatedStarters = strings(support.sentence_starters, maxSentenceStarters);
-  const fallbackStarters = ["Je voudrais ___, s’il vous plaît.", "Je suis ___", "Est-ce que je peux ___ ?"];
-  const generatedWordBank = strings(support.word_bank, 6);
+  const firstActiveWord = activeWords[0]?.replace(/\s*\([^)]*\)$/, "").trim();
+  const fallbackStarters = firstActiveWord
+    ? [`${firstActiveWord}…`, "Je voudrais ___, s’il vous plaît.", "Je suis ___"]
+    : ["Bonjour…", "Je voudrais ___, s’il vous plaît.", "Je suis ___"];
+  const generatedWordBank = strings(support.word_bank, maxWordBank);
   return {
     setting_sv: typeof o.setting_sv === "string" ? o.setting_sv.trim() : "",
     reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue le voyage ?",
@@ -288,11 +298,14 @@ function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStar
         : fallbackStarters.slice(0, maxSentenceStarters),
       word_bank: generatedWordBank.length
         ? generatedWordBank
-        : activeWords.slice(0, 6),
+        : activeWords.slice(0, maxWordBank),
       rescue_sv: typeof support.rescue_sv === "string" && support.rescue_sv.trim()
         ? support.rescue_sv.trim()
         : "Fastnar du kan du skriva på svenska vad du vill säga, så hjälper tutorn dig att uttrycka det på franska."
     },
+    mystery: typeof mystery.clue_id === "string" && typeof mystery.discovery_sv === "string"
+      ? { clue_id: mystery.clue_id.trim(), discovery_sv: mystery.discovery_sv.trim() }
+      : null,
     place: {
       name: typeof place.name === "string" && place.name.trim() ? place.name.trim() : "Frankrike",
       kind: typeof place.kind === "string" ? place.kind.trim() : "plats",
@@ -324,6 +337,9 @@ function mockStoryLesson(input: StoryLessonInput): StoryLesson {
       word_bank: input.targetWords,
       rescue_sv: "Fastnar du kan du skriva på svenska, så hjälper tutorn dig vidare på franska."
     },
+    mystery: input.mysteryContext.eligibleClue
+      ? { clue_id: input.mysteryContext.eligibleClue.id, discovery_sv: input.mysteryContext.eligibleClue.publicNote }
+      : null,
     place: { name: "Paris", kind: "ville", region: "Île-de-France" },
     scene: { kind: "ankomst", title: "Första dagen i Frankrike" },
     new_items: [],
@@ -414,7 +430,7 @@ export async function judgeQuizAnswer(
 }
 
 export interface FrenchIntent {
-  action: "practice" | "question" | "none";
+  action: "learn" | "practice" | "question" | "none";
   word?: string;
 }
 
@@ -429,7 +445,8 @@ const FR_TRIGGERS = [
 
 /**
  * Avgör om ett naturligt meddelande är fransk-intent (utan kommando).
- * - "practice": vill öva/prata franska → starta konversationsläge.
+ * - "learn": vill lära/öva/träna → starta en stöttad lektion.
+ * - "practice": vill uttryckligen prata fritt → starta konversationsläge.
  * - "question": frågar om betydelse/uttal av ett FRANSKT ord → svara som tutor.
  * - "none": inget av detta → faller igenom till vanliga Jarvis.
  */
@@ -445,7 +462,8 @@ export async function detectFrenchIntent(text: string): Promise<FrenchIntent> {
     const wantsFrench = t.includes("franska") || t.includes("français") || t.includes("francais");
     if (wantsFrench) {
       const isQuestion = t.includes("vad betyder") || t.includes("vad heter") || t.includes("hur ");
-      return { action: isQuestion ? "question" : "practice" };
+      const wantsLesson = ["lär", "lära", "öva", "träna", "lektion", "studera"].some((word) => t.includes(word));
+      return { action: isQuestion ? "question" : wantsLesson ? "learn" : "practice" };
     }
     return { action: "question" };
   }
@@ -453,8 +471,9 @@ export async function detectFrenchIntent(text: string): Promise<FrenchIntent> {
   const model = process.env.OPENAI_CLASSIFIER_MODEL || "gpt-4o-mini";
   const sys = [
     "Du avgör om ett (oftast svenskt) meddelande handlar om att lära sig franska.",
-    'Svara ENDAST med JSON: { "action": "practice"|"question"|"none", "word": string }',
-    '"practice" = vill öva/prata/träna franska, t.ex. "nu vill jag öva franska".',
+    'Svara ENDAST med JSON: { "action": "learn"|"practice"|"question"|"none", "word": string }',
+    '"learn" = vill lära sig, öva, träna, studera eller få en fransklektion, t.ex. "nu vill jag lära mig franska".',
+    '"practice" = vill uttryckligen prata eller konversera fritt på franska, t.ex. "prata franska med mig".',
     '"question" = frågar om betydelse, uttal eller stavning av ett FRANSKT ord/fras, t.ex. "vad betyder oui".',
     '"none" = handlar inte om franska, t.ex. "vad betyder idempotent" eller "boka möte imorgon".',
     'word = det franska ordet/frasen om action=question, annars "".'
@@ -478,7 +497,7 @@ export async function detectFrenchIntent(text: string): Promise<FrenchIntent> {
     if (!response.ok) return { action: "none" };
     const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const o = JSON.parse(data.choices?.[0]?.message?.content || "{}") as { action?: string; word?: string };
-    const action = (["practice", "question", "none"].includes(o.action ?? "") ? o.action : "none") as FrenchIntent["action"];
+    const action = (["learn", "practice", "question", "none"].includes(o.action ?? "") ? o.action : "none") as FrenchIntent["action"];
     return { action, word: o.word || undefined };
   } catch {
     return { action: "none" };
