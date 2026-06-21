@@ -11,6 +11,7 @@ import {
   type Channel
 } from "./db.js";
 import { handleTutorTurn, formatTurn } from "./tutor.js";
+import { detectFrenchIntent } from "./llm.js";
 import { buildDailyLesson, buildGrandTest, renderQuestion, type QuizPayload } from "./lessons.js";
 import { handleQuizAnswer } from "./quiz.js";
 import { todayStockholm } from "./time.js";
@@ -117,6 +118,18 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
   }
 
   if (state.chatActive) {
+    const result = await handleTutorTurn(text, input.channel);
+    await io.send(formatTurn(result), true);
+    await io.speak?.(result.reply);
+    return true;
+  }
+
+  // Naturligt språk: "nu vill jag öva franska" eller "vad betyder oui".
+  const intent = await detectFrenchIntent(text);
+  if (intent.action !== "none") {
+    if (intent.action === "practice") {
+      await updateState({ chatActive: true, activeLessonId: null, activeQuizId: null });
+    }
     const result = await handleTutorTurn(text, input.channel);
     await io.send(formatTurn(result), true);
     await io.speak?.(result.reply);

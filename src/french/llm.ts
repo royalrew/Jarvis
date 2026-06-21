@@ -232,6 +232,78 @@ export async function judgeQuizAnswer(
   };
 }
 
+export interface FrenchIntent {
+  action: "practice" | "question" | "none";
+  word?: string;
+}
+
+// Billig heuristik-grind: bara om något av detta finns kör vi en LLM-klassning.
+// Annars slipper varje vanligt Jarvis-meddelande ett extra API-anrop.
+const FR_TRIGGERS = [
+  "franska", "fransk", "français", "francais", "en français", "på franska",
+  "vad betyder", "vad heter", "vad är", "hur säger", "hur uttalar", "hur stavas",
+  "öva franska", "prata franska", "träna franska", "lär mig franska", "parler français",
+  "bonjour", "salut", "merci", "comment "
+];
+
+/**
+ * Avgör om ett naturligt meddelande är fransk-intent (utan kommando).
+ * - "practice": vill öva/prata franska → starta konversationsläge.
+ * - "question": frågar om betydelse/uttal av ett FRANSKT ord → svara som tutor.
+ * - "none": inget av detta → faller igenom till vanliga Jarvis.
+ */
+export async function detectFrenchIntent(text: string): Promise<FrenchIntent> {
+  const t = text.toLowerCase();
+  if (!FR_TRIGGERS.some((k) => t.includes(k))) {
+    return { action: "none" };
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    // Heuristisk fallback utan LLM.
+    const wantsFrench = t.includes("franska") || t.includes("français") || t.includes("francais");
+    if (wantsFrench) {
+      const isQuestion = t.includes("vad betyder") || t.includes("vad heter") || t.includes("hur ");
+      return { action: isQuestion ? "question" : "practice" };
+    }
+    return { action: "question" };
+  }
+
+  const model = process.env.OPENAI_CLASSIFIER_MODEL || "gpt-4o-mini";
+  const sys = [
+    "Du avgör om ett (oftast svenskt) meddelande handlar om att lära sig franska.",
+    'Svara ENDAST med JSON: { "action": "practice"|"question"|"none", "word": string }',
+    '"practice" = vill öva/prata/träna franska, t.ex. "nu vill jag öva franska".',
+    '"question" = frågar om betydelse, uttal eller stavning av ett FRANSKT ord/fras, t.ex. "vad betyder oui".',
+    '"none" = handlar inte om franska, t.ex. "vad betyder idempotent" eller "boka möte imorgon".',
+    'word = det franska ordet/frasen om action=question, annars "".'
+  ].join("\n");
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        max_tokens: 50,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: sys },
+          { role: "user", content: text }
+        ]
+      })
+    });
+    if (!response.ok) return { action: "none" };
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const o = JSON.parse(data.choices?.[0]?.message?.content || "{}") as { action?: string; word?: string };
+    const action = (["practice", "question", "none"].includes(o.action ?? "") ? o.action : "none") as FrenchIntent["action"];
+    return { action, word: o.word || undefined };
+  } catch {
+    return { action: "none" };
+  }
+}
+
 function mockTurn(messages: TutorMessage[]): TutorTurn {
   const last = messages.at(-1)?.content ?? "";
   return {
