@@ -37,7 +37,8 @@ export function startFrenchSchedule(deps: FrenchScheduleDeps): () => void {
 
       if (isWeekday && inWindow(7) && !(await hasLessonForDate("daily", date))) {
         const lesson = await buildDailyLesson();
-        await deps.sendMessage(["☀️ *Bonjour !* Dagens franska:", "", lesson.text].join("\n"));
+        await deps.sendMessage("☀️ *Bonjour !* Dagens franska börjar nu.");
+        for (const message of lesson.messages) await deps.sendMessage(message);
         await deps.sendVoice?.(lesson.reply);
         console.log(`[Français] Daglig lektion skickad (${date}, tema: ${lesson.theme}).`);
       }

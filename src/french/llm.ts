@@ -40,6 +40,8 @@ export interface TutorTurn {
   reviews: TutorReview[];
   new_items: TutorNewItem[];
   errors: TutorError[];
+  scene_complete?: boolean;
+  story_update?: { recap: string; location?: string; next_hint?: string };
 }
 
 export interface TutorMessage {
@@ -77,7 +79,7 @@ export async function callTutorTurn(
     body: JSON.stringify({
       model,
       temperature: 0.6,
-      max_tokens: 900,
+      max_tokens: 1200,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
@@ -112,7 +114,9 @@ const SCHEMA_INSTRUCTIONS = [
   "  ],",
   '  "errors": [                 // konkreta fel att rätta',
   '    { "category": string, "utterance": string, "correction": string, "uttalstips_sv": string? }',
-  "  ]",
+  "  ],",
+  '  "scene_complete": boolean, // true när den aktuella situationen har fått ett naturligt avslut',
+  '  "story_update": { "recap": string, "location": string?, "next_hint": string? } // fyll när scenen avslutas',
   "}",
   "",
   "Regler:",
@@ -120,17 +124,28 @@ const SCHEMA_INSTRUCTIONS = [
   "- Vid uttalsfel: fyll uttalstips_sv med en pragmatisk svensk stavning av hur det SKA låta.",
   "- grade: 1=fel/blank, 2=tveksamt, 3=rätt med ansträngning, 4=lätt och korrekt.",
   "- Sätt INTE reviews för en facet_kind som den aktuella kanalen inte kan bedöma.",
-  "- Alla arrayer ska finnas med (tomma [] om inget passar). reply får aldrig vara tom."
+  "- Alla arrayer ska finnas med (tomma [] om inget passar). reply får aldrig vara tom.",
+  "- I en lektion: fortsätt scenen naturligt och sätt scene_complete=true först när situationen faktiskt är löst; normalt efter 2–5 svar från Jimmy.",
+  "- När scene_complete=true ska story_update sammanfatta vad Jimmy faktiskt gjorde, konsekvensen, aktuell plats och en öppen tråd. Hitta inte på handlingar han inte utförde."
 ].join("\n");
 
 function normalizeTurn(obj: unknown): TutorTurn {
   const o = (obj ?? {}) as Record<string, unknown>;
+  const storyUpdate = (o.story_update ?? {}) as Record<string, unknown>;
   return {
     reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue ?",
     explanation_sv: typeof o.explanation_sv === "string" && o.explanation_sv.trim() ? o.explanation_sv.trim() : undefined,
     reviews: Array.isArray(o.reviews) ? (o.reviews as TutorReview[]).filter(isValidReview) : [],
     new_items: Array.isArray(o.new_items) ? (o.new_items as TutorNewItem[]).filter(isValidNewItem) : [],
-    errors: Array.isArray(o.errors) ? (o.errors as TutorError[]).filter(isValidError) : []
+    errors: Array.isArray(o.errors) ? (o.errors as TutorError[]).filter(isValidError) : [],
+    scene_complete: o.scene_complete === true,
+    story_update: typeof storyUpdate.recap === "string" && storyUpdate.recap.trim()
+      ? {
+          recap: storyUpdate.recap.trim(),
+          location: typeof storyUpdate.location === "string" ? storyUpdate.location.trim() : undefined,
+          next_hint: typeof storyUpdate.next_hint === "string" ? storyUpdate.next_hint.trim() : undefined
+        }
+      : undefined
   };
 }
 
@@ -161,9 +176,11 @@ export interface StoryPlace {
 }
 
 export interface StoryLesson {
+  setting_sv: string;
   reply: string; // scenen på franska (elevens nivå)
   explanation_sv?: string;
   culture_sv: string; // Annas kultur-/historieberättelse
+  mission_sv: string;
   place: StoryPlace;
   scene: { kind: string; title: string };
   new_items: TutorNewItem[];
@@ -179,7 +196,7 @@ export interface StoryLessonInput {
   day: number;
   targetWords: string[];
   leechWords: string[];
-  sceneRequest?: string;
+  maxNewItems: number;
 }
 
 /**
@@ -200,9 +217,9 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     input.recentBeats,
     input.location ? `Ni är nu: ${input.location}` : "Ni har inte börjat resan än.",
     input.nextHint ? `En öppen möjlighet från förra scenen (inte ett krav): ${input.nextHint}` : "",
-    input.sceneRequest ? `Jimmys önskemål för nästa scen: ${input.sceneRequest}` : "",
     input.targetWords.length ? `Dagens målord att väva in: ${input.targetWords.join(", ")}` : "",
     input.leechWords.length ? `Få också med dessa svaga ord: ${input.leechWords.join(", ")}` : "",
+    `Du får introducera högst ${input.maxNewItems} helt nya aktiva ord utöver målord och svaga ord. Övriga miljöord är passiv exponering och ska inte läggas i new_items.`,
     `Detta är dag ${input.day + 1} på resan.`
   ].filter(Boolean).join("\n");
 
@@ -212,7 +229,7 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     body: JSON.stringify({
       model,
       temperature: 0.8,
-      max_tokens: 1600,
+      max_tokens: 3000,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: input.systemPrompt },
@@ -226,18 +243,20 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
   }
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return normalizeStoryLesson(JSON.parse(data.choices?.[0]?.message?.content || "{}"));
+  return normalizeStoryLesson(JSON.parse(data.choices?.[0]?.message?.content || "{}"), input.maxNewItems);
 }
 
-function normalizeStoryLesson(obj: unknown): StoryLesson {
+function normalizeStoryLesson(obj: unknown, maxNewItems: number): StoryLesson {
   const o = (obj ?? {}) as Record<string, unknown>;
   const place = (o.place ?? {}) as Record<string, unknown>;
   const scene = (o.scene ?? {}) as Record<string, unknown>;
   const story = (o.story ?? {}) as Record<string, unknown>;
   return {
+    setting_sv: typeof o.setting_sv === "string" ? o.setting_sv.trim() : "",
     reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue le voyage ?",
     explanation_sv: typeof o.explanation_sv === "string" && o.explanation_sv.trim() ? o.explanation_sv.trim() : undefined,
     culture_sv: typeof o.culture_sv === "string" ? o.culture_sv.trim() : "",
+    mission_sv: typeof o.mission_sv === "string" && o.mission_sv.trim() ? o.mission_sv.trim() : "Svara på franska och se vad som händer.",
     place: {
       name: typeof place.name === "string" && place.name.trim() ? place.name.trim() : "Frankrike",
       kind: typeof place.kind === "string" ? place.kind.trim() : "plats",
@@ -247,7 +266,7 @@ function normalizeStoryLesson(obj: unknown): StoryLesson {
       kind: typeof scene.kind === "string" && scene.kind.trim() ? scene.kind.trim() : "vardag",
       title: typeof scene.title === "string" && scene.title.trim() ? scene.title.trim() : "Nästa scen"
     },
-    new_items: Array.isArray(o.new_items) ? (o.new_items as TutorNewItem[]).filter(isValidNewItem) : [],
+    new_items: Array.isArray(o.new_items) ? (o.new_items as TutorNewItem[]).filter(isValidNewItem).slice(0, maxNewItems) : [],
     story: {
       recap: typeof story.recap === "string" ? story.recap.trim() : "",
       location: typeof story.location === "string" && story.location.trim() ? story.location.trim() : "",
@@ -258,9 +277,11 @@ function normalizeStoryLesson(obj: unknown): StoryLesson {
 
 function mockStoryLesson(input: StoryLessonInput): StoryLesson {
   return {
+    setting_sv: "Du har precis landat på Charles de Gaulle och försöker förstå hur du ska ta dig in till Paris.",
     reply: "« À Paris ✈️ »\nAnna : Bienvenue à Paris ! On commence le voyage. Et toi, ça va ?",
     explanation_sv: "(mock-läge — ingen OPENAI_API_KEY) Anna hälsar dig välkommen till Paris.",
     culture_sv: "Mock-läge: här skulle Anna berätta om platsen och dess historia.",
+    mission_sv: "Hälsa och berätta kort hur du mår på franska.",
     place: { name: "Paris", kind: "ville", region: "Île-de-France" },
     scene: { kind: "ankomst", title: "Första dagen i Frankrike" },
     new_items: [],

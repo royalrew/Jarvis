@@ -9,6 +9,7 @@ import { gradeFacet, isKindAllowed, allowedKinds, type GradeOutcome } from "./fs
 import { callTutorTurn, type TutorTurn, type TutorMessage } from "./llm.js";
 import { tutorSystemPrompt } from "./prompts.js";
 import { getState } from "./db.js";
+import { getLesson } from "./db.js";
 import { CAST, TRAVEL_INTERESTS, getStory, summarizeRecentBeats } from "./story.js";
 
 /**
@@ -28,6 +29,8 @@ export interface TurnResult {
   outcomes: GradeOutcome[];
   newLemmas: string[];
   errors: { category: string; correction: string }[];
+  sceneComplete: boolean;
+  storyUpdate?: { recap: string; location?: string; nextHint?: string };
 }
 
 /**
@@ -36,7 +39,7 @@ export interface TurnResult {
  */
 export async function handleTutorTurn(userText: string, channel: Channel): Promise<TurnResult> {
   const state = await getState();
-  const context = await buildContext(channel);
+  const context = await buildContext(channel, state.activeLessonId);
   const systemPrompt = tutorSystemPrompt(state.mode, context);
 
   pushHistory({ role: "user", content: userText });
@@ -92,18 +95,35 @@ export async function applyTurn(turn: TutorTurn, channel: Channel): Promise<Turn
     explanationSv: turn.explanation_sv,
     outcomes,
     newLemmas,
-    errors
+    errors,
+    sceneComplete: turn.scene_complete === true,
+    storyUpdate: turn.story_update
+      ? { recap: turn.story_update.recap, location: turn.story_update.location, nextHint: turn.story_update.next_hint }
+      : undefined
   };
 }
 
 /** Bygger en kort kontextsträng av förfallna facetter för LLM:en. */
-async function buildContext(channel: Channel): Promise<string> {
+async function buildContext(channel: Channel, activeLessonId: string | null): Promise<string> {
   const due = await getDueFacets(8, allowedKinds(channel));
   const lines = due.map((f) => {
     const tip = f.meta.svensk_ljudharmning ? ` [uttal: ${f.meta.svensk_ljudharmning}]` : "";
     return `- ${f.lemma} (${f.kind}) = ${f.meta.translation}${tip}`;
   });
   const story = await getStory();
+  const activeLesson = activeLessonId ? await getLesson(activeLessonId) : null;
+  const sceneTurns = Number(activeLesson?.payload?.sceneTurns ?? 0);
+  const lessonPhase = activeLesson?.payload?.lessonPhase === "recall" ? "recall" : "scene";
+  const levelLabel = typeof activeLesson?.payload?.levelLabel === "string" ? activeLesson.payload.levelLabel : "A1";
+  const learnerSignal = typeof activeLesson?.payload?.learnerSignal === "string" ? activeLesson.payload.learnerSignal : "unknown";
+  const activeWords = Array.isArray(activeLesson?.payload?.activeWords)
+    ? activeLesson.payload.activeWords.filter((word): word is string => typeof word === "string")
+    : [];
+  const openingReply = typeof activeLesson?.payload?.openingReply === "string" ? activeLesson.payload.openingReply : "";
+  const missionSv = typeof activeLesson?.payload?.missionSv === "string" ? activeLesson.payload.missionSv : "";
+  const transcript = Array.isArray(activeLesson?.payload?.transcript)
+    ? (activeLesson.payload.transcript as Array<{ user?: string; assistant?: string }>).slice(-5)
+    : [];
   return [
     "PÅGÅENDE VÄRLD (fortsätt den fritt; behandla inte detta som en ny fristående chatt):",
     `Premiss: ${story.premise}`,
@@ -112,6 +132,17 @@ async function buildContext(channel: Channel): Promise<string> {
     `Nuvarande plats: ${story.location ?? "resan har inte börjat"}`,
     story.nextHint ? `Öppen tråd: ${story.nextHint}` : "",
     summarizeRecentBeats(story, 6),
+    activeLesson ? [
+      `AKTIV LEKTION: nivå ${levelLabel}, fas ${lessonPhase}, Jimmy har svarat ${sceneTurns} gånger.`,
+      `Senaste prestationssignal: ${learnerSignal}. Anpassa mängden svensk stöttning och fransk komplexitet därefter, utan att kommentera signalen.`,
+      activeWords.length ? `Aktiva ord att locka fram och bedöma, inte ersätta med fler nya ord: ${activeWords.join(", ")}` : "",
+      lessonPhase === "recall"
+        ? "ÅTERKALLNINGSFAS: bedöm Jimmys korta återberättande, ge kompakt återkoppling, återanvänd målord, avsluta scenen och fyll scene_complete=true samt story_update. Ställ ingen ny scenfråga."
+        : `Låt situationen utvecklas naturligt och väv in en förståelsekontroll som en handling eller följdfråga. Avsluta inom totalt 2–5 svar.${sceneTurns >= 4 ? " Detta är sista scensvaret: ge situationen ett naturligt slut, sätt scene_complete=true och fyll story_update." : ""}`,
+      openingReply ? `Scenens öppning:\n${openingReply}` : "",
+      missionSv ? `Ursprungligt uppdrag: ${missionSv}` : "",
+      transcript.length ? `Dialogen hittills:\n${transcript.map((turn) => `Jimmy: ${turn.user ?? ""}\nVärlden: ${turn.assistant ?? ""}`).join("\n")}` : ""
+    ].filter(Boolean).join("\n") : "",
     "",
     "Förfallna repetitioner att gärna väva in:",
     ...(lines.length ? lines : ["(inga just nu)"])

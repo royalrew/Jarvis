@@ -102,10 +102,33 @@ export function startTelegramBot() {
  * vägrar (t.ex. trasig Markdown från fransk text med apostrofer/understreck).
  */
 async function safeSendTelegramMessage(chatId: number, text: string, token: string, parseMode?: string, replyMarkup?: unknown) {
-  const ok = await sendTelegramMessage(chatId, text, token, parseMode, replyMarkup);
-  if (!ok && parseMode) {
-    await sendTelegramMessage(chatId, text, token, undefined, replyMarkup);
+  for (const chunk of splitTelegramText(text)) {
+    const ok = await sendTelegramMessage(chatId, chunk, token, parseMode, replyMarkup);
+    if (!ok && parseMode) {
+      await sendTelegramMessage(chatId, chunk, token, undefined, replyMarkup);
+    }
   }
+}
+
+/** Telegram tillåter högst 4096 tecken. Lämna marginal för emoji/Markdown. */
+function splitTelegramText(text: string, maxLength = 3800): string[] {
+  if (Array.from(text).length <= maxLength) return [text];
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const paragraph of text.split(/\n{2,}/)) {
+    const separator = current ? "\n\n" : "";
+    if (Array.from(current + separator + paragraph).length <= maxLength) {
+      current += separator + paragraph;
+      continue;
+    }
+    if (current) chunks.push(current);
+    const characters = Array.from(paragraph);
+    while (characters.length > maxLength) chunks.push(characters.splice(0, maxLength).join(""));
+    current = characters.join("");
+  }
+  if (current) chunks.push(current);
+  return chunks;
 }
 
 /** Registrerar fransk-kommandona i Telegrams "/"-meny så de blir upptäckbara. */

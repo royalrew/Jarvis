@@ -8,12 +8,14 @@ import {
   getFacet,
   createLesson,
   setLessonStatus,
+  getLesson,
+  setLessonPayload,
   type Channel
 } from "./db.js";
 import { handleTutorTurn, formatTurn } from "./tutor.js";
 import { detectFrenchIntent } from "./llm.js";
 import { renderCourseMap, seedCurriculum } from "./curriculum.js";
-import { getStory, resetStory } from "./story.js";
+import { finalizeScene, getStory, resetStory } from "./story.js";
 import { buildDailyLesson, buildGrandTest, buildModuleCheckpoint, renderQuestion, type QuizPayload } from "./lessons.js";
 import { handleQuizAnswer } from "./quiz.js";
 import { todayStockholm } from "./time.js";
@@ -90,9 +92,6 @@ function naturalCommand(text: string): { command: string; arg: string } | null {
   if (has("testa mig", "förhör", "forhor", "avstämning", "avstamning", "läxförhör", "laxforhor")) return { command: "/avstämning", arg: "" };
   if (has("min resa", "visa resan", "berättelse", "berattelse", "reserutt", "var har jag varit")) return { command: "/story", arg: "" };
   if (has("nästa lektion", "nasta lektion", "ny lektion", "dagens lektion", "fortsätt resan", "fortsatt resan")) return { command: "/lektion", arg: "" };
-  if (/^(jag vill |kan vi |vi (?:går|gar|åker|aker)|ta mig |låt oss |lat oss )/.test(t) && has("gå till", "ga till", "åka till", "aka till", "besöka", "besoka", "sjukhus", "apotek", "café", "cafe", "slott", "museum")) {
-    return { command: "/lektion", arg: text };
-  }
   if (has("min kurs", "kurskarta", "var är jag i kursen", "hur långt har jag", "hur langt har jag", "kursöversikt", "kursoversikt")) return { command: "/kurs", arg: "" };
   if (has("delprov", "grand test", "veckans prov", "kör ett prov", "kor ett prov")) return { command: "/delprov", arg: "" };
   if (has("min streak", "dagar i rad")) return { command: "/streak", arg: "" };
@@ -132,11 +131,48 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
   }
 
   if (state.activeLessonId) {
+    const lessonId = state.activeLessonId;
+    const lesson = await getLesson(lessonId);
+    const lessonPhase = lesson?.payload?.lessonPhase === "recall" ? "recall" : "scene";
+    const previousTurns = Number(lesson?.payload?.sceneTurns ?? 0);
     const result = await handleTutorTurn(text, input.channel);
-    await setLessonStatus(state.activeLessonId, "graded");
-    await bumpStreak();
-    await updateState({ activeLessonId: null, chatActive: true });
-    await io.send(formatTurn(result), true);
+    const sceneTurns = previousTurns + 1;
+    const enterRecall = lessonPhase === "scene" && ((result.sceneComplete && sceneTurns >= 2) || sceneTurns >= 5);
+    const lessonComplete = lessonPhase === "recall";
+    const previousTranscript = Array.isArray(lesson?.payload?.transcript) ? lesson.payload.transcript : [];
+    const transcript = [...previousTranscript, { user: text, assistant: result.reply }].slice(-5);
+    const pendingStoryUpdate = result.storyUpdate ?? lesson?.payload?.pendingStoryUpdate;
+    const learnerSignal = result.errors.length >= 2
+      ? "struggling"
+      : result.errors.length === 0 && result.outcomes.some((outcome) => outcome.applied)
+        ? "confident"
+        : "steady";
+    await setLessonPayload(lessonId, {
+      ...(lesson?.payload ?? {}),
+      sceneTurns,
+      transcript,
+      learnerSignal,
+      lessonPhase: enterRecall ? "recall" : lessonPhase,
+      pendingStoryUpdate
+    });
+    await setLessonStatus(lessonId, lessonComplete ? "graded" : "answered");
+    if (lessonComplete) {
+      if (pendingStoryUpdate && typeof pendingStoryUpdate === "object" && "recap" in pendingStoryUpdate) {
+        await finalizeScene(pendingStoryUpdate as { recap: string; location?: string; nextHint?: string });
+      }
+      await bumpStreak();
+      await updateState({ activeLessonId: null, chatActive: true });
+    }
+    const activeWords = Array.isArray(lesson?.payload?.activeWords) ? lesson.payload.activeWords : [];
+    const recallWords = activeWords
+      .filter((word): word is string => typeof word === "string")
+      .slice(0, 3)
+      .map((word) => word.replace(/\s*\([^)]*\)$/, ""));
+    const recall = enterRecall
+      ? `\n\n🎒 *Innan du går vidare*\nBerätta mycket kort på franska vad som hände eller vad du gjorde.${recallWords.length ? ` Försök få med: *${recallWords.join(" · ")}*.` : ""}`
+      : "";
+    const ending = lessonComplete ? "\n\n✅ *Kapitel klart.* Orden återkommer senare i resan, med mindre hjälp." : "";
+    await io.send(formatTurn(result) + recall + ending, true);
     await io.speak?.(result.reply);
     return true;
   }
@@ -175,8 +211,8 @@ async function runFrenchCommand(command: string, arg: string, io: FrenchIO): Pro
 
     case "/lektion": {
       await io.send("Bygger dagens lektion…");
-      const lesson = await buildDailyLesson(arg || undefined);
-      await io.send(lesson.text, true);
+      const lesson = await buildDailyLesson();
+      for (const message of lesson.messages) await io.send(message, true);
       await io.speak?.(lesson.reply);
       return true;
     }
@@ -370,7 +406,7 @@ async function renderStory(): Promise<string> {
   }
   if (story.location) lines.push("", `Du är nu: *${story.location}*`);
   if (story.nextHint) lines.push(`Öppen tråd: ${story.nextHint}`);
-  lines.push("", "Tryck *Lektion* för nästa scen, eller skriv vad du vill göra — exempelvis _kan vi gå till ett café?_ ");
+  lines.push("", "Tryck *Lektion* när du vill fortsätta och låt resan överraska dig.");
   return lines.join("\n");
 }
 

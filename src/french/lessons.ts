@@ -15,6 +15,7 @@ import { generateStoryLesson } from "./llm.js";
 import { storyLessonPrompt } from "./prompts.js";
 import { CAST, TRAVEL_INTERESTS, getStory, initStoryIfNeeded, updateStory, appendBeat, summarizeRecentBeats } from "./story.js";
 import { todayStockholm } from "./time.js";
+import { lessonPedagogy } from "./pedagogy.js";
 
 /**
  * Lektions- och provbyggare (M4/M5). Allt urval är deterministiskt — LLM:en
@@ -24,23 +25,21 @@ import { todayStockholm } from "./time.js";
 export interface BuiltLesson {
   lessonId: string;
   text: string;
+  messages: string[];
   /** Endast den franska delen — för TTS/röst-ut (utan svenska nyckeln). */
   reply: string;
   theme: string;
 }
 
 /**
- * Bygger nästa anhalt i den sammanhängande reseberättelsen: du (Jimmy) reser
- * genom Frankrike med Anna, din kultur- och historieguide. Varje lektion
- * fortsätter resan till en ny riktig plats (slott, kyrka, världskrigsminne)
- * och övar orden i din aktuella kursmodul. Annas historieberättelse ligger på
- * svenska för nybörjaren (mer franska högre upp).
+ * Bygger nästa dynamiska kapitel i Jimmys liv och resa genom Frankrike.
+ * Modellen väljer situationen utifrån världsminnet; kursmotorn äger målord,
+ * svagheter och progression.
  */
-export async function buildDailyLesson(sceneRequest?: string): Promise<BuiltLesson> {
+export async function buildDailyLesson(): Promise<BuiltLesson> {
   const date = todayStockholm();
   await initStoryIfNeeded();
   const story = await getStory();
-  const leeches = await getLeechFacets(2);
 
   // Dagens målord = de ord du ännu inte behärskar i din aktuella kursdel.
   const { getCurrentModule } = await import("./curriculum.js");
@@ -49,19 +48,24 @@ export async function buildDailyLesson(sceneRequest?: string): Promise<BuiltLess
   let levelLabel = "A1 nybörjare";
   if (current) {
     const items = await getModuleItems(current.module);
-    targetWords = items.filter((it) => !it.mastered).slice(0, 6).map((it) => `${it.lemma} (${it.meta.translation})`);
     levelLabel = `${current.module.split(".")[0]} – ${current.theme}`;
+    const policy = lessonPedagogy(levelLabel, story.day === 0);
+    targetWords = items.filter((it) => !it.mastered).slice(0, policy.targetWords).map((it) => `${it.lemma} (${it.meta.translation})`);
   } else {
-    const due = await getDueFacets(6);
+    const policy = lessonPedagogy(levelLabel, story.day === 0);
+    const due = await getDueFacets(policy.targetWords);
     targetWords = due.map((f) => `${f.lemma} (${f.meta.translation})`);
   }
+
+  const policy = lessonPedagogy(levelLabel, story.day === 0);
+  const leeches = await getLeechFacets(policy.leechWords);
 
   // Pinna de leeches vi väver in, så de räknas som dagens fokus.
   for (const l of leeches) await pinLeech(l.id, true);
   const leechWords = leeches.map((l) => l.lemma);
 
   const lesson = await generateStoryLesson({
-    systemPrompt: storyLessonPrompt(levelLabel, CAST, TRAVEL_INTERESTS),
+    systemPrompt: storyLessonPrompt(levelLabel, CAST, TRAVEL_INTERESTS, policy),
     premise: story.premise,
     recentBeats: summarizeRecentBeats(story),
     location: story.location,
@@ -69,7 +73,7 @@ export async function buildDailyLesson(sceneRequest?: string): Promise<BuiltLess
     day: story.day,
     targetWords,
     leechWords,
-    sceneRequest
+    maxNewItems: policy.maxNewItems
   });
 
   // Spara nya ord lektionen introducerar (inga reviews än).
@@ -96,15 +100,32 @@ export async function buildDailyLesson(sceneRequest?: string): Promise<BuiltLess
     kind: "daily",
     day: newDay,
     place: lesson.place,
-    scene: lesson.scene
+    scene: lesson.scene,
+    sceneTurns: 0,
+    lessonPhase: "scene",
+    settingSv: lesson.setting_sv,
+    openingReply: lesson.reply,
+    missionSv: lesson.mission_sv,
+    levelLabel,
+    activeWords: [...targetWords, ...leechWords]
   });
   await updateState({ activeLessonId: lessonId, activeQuizId: null, chatActive: false, lastLessonDate: date });
 
-  const parts = [lesson.reply];
-  if (lesson.explanation_sv) parts.push("", `🇸🇪 ${lesson.explanation_sv}`);
-  if (lesson.culture_sv) parts.push("", `🏛️ *Anna berättar:* ${lesson.culture_sv}`);
+  const messages = [
+    `🎬 *${lesson.scene.title}*\n📍 ${lesson.place.name}${lesson.place.region ? ` · ${lesson.place.region}` : ""}${lesson.setting_sv ? `\n\n${lesson.setting_sv}` : ""}`,
+    `🇫🇷 *Scenen*\n\n${lesson.reply}`
+  ];
+  if (lesson.explanation_sv) messages.push(`🗝️ *Språknyckel*\n\n${lesson.explanation_sv}`);
+  if (lesson.culture_sv) messages.push(`🏛️ *Kultur och historia*\n\n${lesson.culture_sv}`);
+  messages.push(`🎭 *Din tur*\n\n${lesson.mission_sv}`);
 
-  return { lessonId, text: parts.join("\n"), reply: lesson.reply, theme: lesson.place.name };
+  return {
+    lessonId,
+    text: messages.join("\n\n"),
+    messages,
+    reply: lesson.reply,
+    theme: lesson.place.name
+  };
 }
 
 // --------------------------------------------------------------------------

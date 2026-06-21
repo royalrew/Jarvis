@@ -101,6 +101,29 @@ export async function appendBeat(beat: StoryBeat): Promise<void> {
   await sql`UPDATE fr_story SET beats = ${sql.json(beats as never)}, updated_at = now() WHERE id = 1`;
 }
 
+/** Skriver tillbaka det faktiska utfallet när en flerstegsscen har avslutats. */
+export async function finalizeScene(update: { recap: string; location?: string; nextHint?: string }): Promise<void> {
+  const sql = getSql();
+  const story = await getStory();
+  const beats = [...story.beats];
+  const last = beats.at(-1);
+  if (last) {
+    beats[beats.length - 1] = {
+      ...last,
+      recap: update.recap,
+      location: update.location || last.location
+    };
+  }
+  await sql`
+    UPDATE fr_story
+    SET beats = ${sql.json(beats as never)},
+        location = ${update.location || story.location},
+        next_hint = ${update.nextHint ?? story.nextHint},
+        updated_at = now()
+    WHERE id = 1
+  `;
+}
+
 /** Börjar om resan. Behåller kursprogress/mastery — bara berättelsen nollställs. */
 export async function resetStory(premise?: string): Promise<void> {
   const sql = getSql();
