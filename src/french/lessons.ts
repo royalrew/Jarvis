@@ -1,11 +1,9 @@
 import {
   createLesson,
-  getTopErrorCategories,
   getLeechFacets,
   getNearMasteryGaps,
   getDueFacets,
   getModuleItems,
-  getState,
   pinLeech,
   updateState,
   type Channel,
@@ -13,9 +11,9 @@ import {
 } from "./db.js";
 import { MASTERY_STABILITY, allowedKinds } from "./fsrs.js";
 import { applyTurn } from "./tutor.js";
-import { callTutorTurn } from "./llm.js";
-import { lessonScenePrompt } from "./prompts.js";
-import { pickScene, CAST } from "./scenarios.js";
+import { generateStoryLesson } from "./llm.js";
+import { storyLessonPrompt } from "./prompts.js";
+import { CAST, getStory, initStoryIfNeeded, updateStory, appendBeat, summarizeRecentBeats } from "./story.js";
 import { todayStockholm } from "./time.js";
 
 /**
@@ -32,26 +30,28 @@ export interface BuiltLesson {
 }
 
 /**
- * Bygger dagens lektion som en trevlig, varierad vardagsscen med återkommande
- * karaktärer (Anna & Simone m.fl.). Målorden hämtas ur den modul du står på i
- * kursen (det läraren vill att du ska behärska), kryddat med dagens leeches.
+ * Bygger nästa anhalt i den sammanhängande reseberättelsen: du (Jimmy) reser
+ * genom Frankrike med Anna, din kultur- och historieguide. Varje lektion
+ * fortsätter resan till en ny riktig plats (slott, kyrka, världskrigsminne)
+ * och övar orden i din aktuella kursmodul. Annas historieberättelse ligger på
+ * svenska för nybörjaren (mer franska högre upp).
  */
 export async function buildDailyLesson(): Promise<BuiltLesson> {
   const date = todayStockholm();
-  const state = await getState();
+  await initStoryIfNeeded();
+  const story = await getStory();
   const leeches = await getLeechFacets(2);
 
   // Dagens målord = de ord du ännu inte behärskar i din aktuella kursdel.
   const { getCurrentModule } = await import("./curriculum.js");
   const current = await getCurrentModule();
   let targetWords: string[] = [];
-  let levelLabel = "nybörjare";
+  let levelLabel = "A1 nybörjare";
   if (current) {
     const items = await getModuleItems(current.module);
     targetWords = items.filter((it) => !it.mastered).slice(0, 6).map((it) => `${it.lemma} (${it.meta.translation})`);
     levelLabel = `${current.module.split(".")[0]} – ${current.theme}`;
   } else {
-    // Ingen aktiv kursdel: falla tillbaka på förfallna ord.
     const due = await getDueFacets(6);
     targetWords = due.map((f) => `${f.lemma} (${f.meta.translation})`);
   }
@@ -60,40 +60,44 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
   for (const l of leeches) await pinLeech(l.id, true);
   const leechWords = leeches.map((l) => l.lemma);
 
-  // Välj en scen – varierad mot förra gången.
-  const scene = pickScene(state.lastScenario);
-  const theme = `${scene.setting_fr}`;
+  const lesson = await generateStoryLesson({
+    systemPrompt: storyLessonPrompt(levelLabel, CAST),
+    premise: story.premise,
+    recentBeats: summarizeRecentBeats(story),
+    location: story.location,
+    nextHint: story.nextHint,
+    day: story.day,
+    targetWords,
+    leechWords
+  });
 
-  const turn = await callTutorTurn(
-    lessonScenePrompt({
-      cast: CAST,
-      settingFr: scene.setting_fr,
-      settingSv: scene.setting_sv,
-      hint: scene.hint,
-      targetWords,
-      leechWords,
-      levelLabel
-    }),
-    [{ role: "user", content: "Bygg dagens scen-lektion." }],
+  // Spara nya ord lektionen introducerar (inga reviews än).
+  await applyTurn(
+    { reply: lesson.reply, explanation_sv: lesson.explanation_sv, new_items: lesson.new_items, reviews: [], errors: [] },
     "text"
   );
 
-  // Spara eventuella nya ord lektionen introducerar (men inga reviews än).
-  await applyTurn({ ...turn, reviews: [] }, "text");
+  // Flytta berättelsen framåt.
+  const newDay = story.day + 1;
+  const newLocation = lesson.story.location || lesson.place.name;
+  await appendBeat({
+    day: newDay,
+    location: newLocation,
+    placeName: lesson.place.name,
+    placeKind: lesson.place.kind,
+    recap: lesson.story.recap
+  });
+  await updateStory({ location: newLocation, nextHint: lesson.story.next_hint, day: newDay });
 
   const facetIds = leeches.map((l) => l.id);
-  const lessonId = await createLesson("daily", date, theme, facetIds, { kind: "daily", scene: scene.id });
+  const lessonId = await createLesson("daily", date, lesson.place.name, facetIds, { kind: "daily", day: newDay, place: lesson.place });
+  await updateState({ activeLessonId: lessonId, activeQuizId: null, chatActive: false, lastLessonDate: date });
 
-  await updateState({
-    activeLessonId: lessonId,
-    activeQuizId: null,
-    chatActive: false,
-    lastLessonDate: date,
-    lastScenario: scene.id
-  });
+  const parts = [lesson.reply];
+  if (lesson.explanation_sv) parts.push("", `🇸🇪 ${lesson.explanation_sv}`);
+  if (lesson.culture_sv) parts.push("", `🏛️ *Anna berättar:* ${lesson.culture_sv}`);
 
-  const text = [turn.reply, turn.explanation_sv ? `\n🇸🇪 ${turn.explanation_sv}` : ""].filter(Boolean).join("\n");
-  return { lessonId, text, reply: turn.reply, theme };
+  return { lessonId, text: parts.join("\n"), reply: lesson.reply, theme: lesson.place.name };
 }
 
 // --------------------------------------------------------------------------

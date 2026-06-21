@@ -25,54 +25,33 @@ export function tutorSystemPrompt(mode: Mode, context: string): string {
   ].join("\n");
 }
 
-/** Kort instruktion till LLM:en när vi bygger en daglig lektion runt ett tema. */
-export function lessonBuilderPrompt(theme: string, leechWords: string[], context: string): string {
-  return [
-    "Du bygger Jimmys franska morgonlektion. Skriv ETT sammanhängande, trevligt morgonmeddelande på franska.",
-    `Tema: ${theme}.`,
-    leechWords.length
-      ? `Väv naturligt in dessa svaga ord så han tvingas använda dem: ${leechWords.join(", ")}.`
-      : "Inga pinnade svagheter idag — håll det lätt och inbjudande.",
-    "Avsluta med en öppen fråga så han svarar (text eller röst).",
-    "Returnera TutorTurn-JSON. 'reply' = morgonmeddelandet på franska. Lägg gärna en kort svensk nyckel i 'explanation_sv'.",
-    "Sätt inga reviews här (Jimmy har inte svarat än). new_items får innehålla dagens nyckelord.",
-    "",
-    "Kontext:",
-    context
-  ].join("\n");
-}
-
 /**
- * Scen-lektion: en liten varm vardagsscen med återkommande karaktärer, som
- * naturligt övar dagens målord. Varierar setting varje gång så det aldrig blir
- * tråkigt — och slutar med att Jimmy själv får kliva in i scenen.
+ * Story-lektion: nästa anhalt i den sammanhängande reseberättelsen. Du (Jimmy)
+ * reser genom Frankrike med Anna, en kultur- och historieguide. Varje lektion
+ * fortsätter resan till en ny RIKTIG plats och Anna berättar om kultur/historia
+ * (gärna 1a/2a världskriget). Franskan hålls på elevens nivå; den rikare
+ * historien levereras på svenska (mer franska ju högre nivå).
  */
-export function lessonScenePrompt(args: {
-  cast: string;
-  settingFr: string;
-  settingSv: string;
-  hint: string;
-  targetWords: string[];
-  leechWords: string[];
-  levelLabel: string;
-}): string {
+export function storyLessonPrompt(levelLabel: string, cast: string): string {
   return [
-    "Du skriver Jimmys dagliga franska scen-lektion. Den ska vara TREVLIG, levande och varierad — som en liten pjäs ur vardagen.",
-    `Karaktärer: ${args.cast}`,
-    `Miljö idag: ${args.settingSv} (${args.settingFr}). Naturligt fokus: ${args.hint}.`,
-    `Nivå: ${args.levelLabel}. Håll franskan enkel och tydlig, men naturlig.`,
-    args.targetWords.length
-      ? `Väv in dagens MÅLORD organiskt i dialogen (de ska kännas naturliga, inte uppradade): ${args.targetWords.join(", ")}.`
-      : "Inga specifika målord — håll det lätt och vardagligt.",
-    args.leechWords.length ? `Få också med dessa svaga ord: ${args.leechWords.join(", ")}.` : "",
+    "Du skriver nästa anhalt i Jimmys franska RESEBERÄTTELSE — en sammanhängande följetong, inte en fristående scen.",
+    `Karaktärer: ${cast}`,
+    `Elevens nivå: ${levelLabel}. Franskan i 'reply' ska ligga på den nivån — enkel och tydlig på A1.`,
     "",
-    "Format på 'reply' (allt på franska):",
-    "1) En kort scenrubrik, t.ex. « Au café ☕ ».",
-    "2) En liten dialog på 4–7 repliker mellan karaktärerna (med namn före varje replik).",
-    "3) Avsluta med en replik DÄR JIMMY får kliva in: en karaktär vänder sig till honom med en konkret fråga han ska svara på (text eller röst).",
+    "VIKTIGAST: 'reply' är själva scenen — en dialog på franska — och får ALDRIG vara tom eller bara en fras. Det är hjärtat i lektionen.",
     "",
-    "Lägg en kort svensk översättning/nyckel i 'explanation_sv' (de viktigaste fraserna).",
-    "Sätt inga reviews (Jimmy har inte svarat än). new_items får innehålla nya nyckelord med wazo-uttalstips.",
-    "Variera ton och innehåll mot tidigare lektioner — undvik att upprepa samma repliker."
-  ].filter(Boolean).join("\n");
+    "Gör så här:",
+    "1) FORTSÄTT resan från där den är (se 'Resan hittills' och 'Planerat härnäst'). Res vidare till en NY, RIKTIG fransk plats — ett slott, en kyrka/katedral, en första/andra världskrigets minnesplats, eller en stad. Geografiskt rimligt. Upprepa ALDRIG en plats ni redan besökt.",
+    "2) Fyll 'reply' med scenen (på franska, elevens nivå): rad 1 en kort rubrik (t.ex. « À Verdun »), sedan 4–7 repliker mellan dig (Jimmy) och Anna med NAMN före varje replik (t.ex. 'Anna : ...'), och AVSLUTA med att Anna eller en biperson vänder sig till DIG med en konkret fråga du ska svara på. ALL dialog ligger i 'reply', inte i 'explanation_sv' eller 'culture_sv'.",
+    "3) Väv in dagens MÅLORD naturligt i dialogen (inte uppradade).",
+    "4) I 'culture_sv': låt Anna berätta levande om platsen i 3–5 meningar — dess historia och kultur, gärna kopplingen till första/andra världskriget när det passar. Skriv på SVENSKA på A1–A2 (så nybörjaren förstår), väv in mer franska först från B1.",
+    "5) 'place' = den riktiga platsen: { name, kind (château/cathédrale/église/mémoire de guerre/ville), region }.",
+    "6) 'explanation_sv' = kort svensk nyckel till de viktigaste franska fraserna.",
+    "7) 'new_items' = nya nyckelord med försvenskat uttalstips (svensk_ljudharmning, t.ex. 'wazo' för 'oiseau').",
+    "8) 'story' = { recap: en mening på svenska om vad som hände här, location: var ni är nu, next_hint: vart resan rimligen går härnäst }.",
+    "",
+    "Håll det varmt, levande och lärorikt. Luta dig mot välkända, verkliga platser så historien blir korrekt.",
+    "",
+    'Svara ENDAST med JSON: { "reply", "explanation_sv", "culture_sv", "place": {"name","kind","region"}, "new_items": [...], "story": {"recap","location","next_hint"} }'
+  ].join("\n");
 }

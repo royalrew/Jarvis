@@ -13,6 +13,7 @@ import {
 import { handleTutorTurn, formatTurn } from "./tutor.js";
 import { detectFrenchIntent } from "./llm.js";
 import { renderCourseMap, seedCurriculum } from "./curriculum.js";
+import { getStory, resetStory } from "./story.js";
 import { buildDailyLesson, buildGrandTest, buildModuleCheckpoint, renderQuestion, type QuizPayload } from "./lessons.js";
 import { handleQuizAnswer } from "./quiz.js";
 import { todayStockholm } from "./time.js";
@@ -37,7 +38,9 @@ export interface FrenchInput {
 const FRENCH_COMMANDS = new Set([
   "/franska", "/français", "/francais",
   "/lektion", "/delprov", "/streak", "/svaga", "/uttal", "/läge", "/lage",
-  "/kurs", "/seed", "/avstämning", "/avstamning", "/avbryt", "/sluta"
+  "/kurs", "/seed", "/avstämning", "/avstamning",
+  "/story", "/resa", "/berättelse", "/berattelse", "/nystart",
+  "/avbryt", "/sluta"
 ]);
 
 export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promise<boolean> {
@@ -75,6 +78,23 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
 
       case "/kurs":
         await io.send(await renderCourseMap(), true);
+        return true;
+
+      case "/story":
+      case "/resa":
+      case "/berättelse":
+      case "/berattelse":
+        await io.send(await renderStory(), true);
+        return true;
+
+      case "/nystart":
+        await resetStory(arg || undefined);
+        await io.send(
+          arg
+            ? `🧳 Ny resa påbörjad med fokus: *${arg}*. Skriv /lektion så börjar äventyret med Anna!`
+            : "🧳 Ny resa påbörjad! Skriv /lektion så börjar äventyret med Anna från början.",
+          true
+        );
         return true;
 
       case "/avstämning":
@@ -239,6 +259,25 @@ async function renderWeak(): Promise<string> {
       lines.push(`• ${l.lemma} = ${l.meta.translation}${tip} — ${l.kind}`);
     }
   }
+  return lines.join("\n");
+}
+
+async function renderStory(): Promise<string> {
+  const story = await getStory();
+  const lines = ["🧳 *Din resa genom Frankrike med Anna*", "", `_${story.premise}_`];
+
+  if (story.beats.length === 0) {
+    lines.push("", "Resan har inte börjat än — skriv /lektion så landar du i Frankrike med Anna! 🇫🇷");
+    return lines.join("\n");
+  }
+
+  lines.push("", "*Reserutt hittills:*");
+  for (const b of story.beats.slice(-15)) {
+    lines.push(`📍 Dag ${b.day}: ${b.placeName} (${b.placeKind}) — ${b.recap}`);
+  }
+  if (story.location) lines.push("", `Du är nu: *${story.location}*`);
+  if (story.nextHint) lines.push(`Härnäst: ${story.nextHint}`);
+  lines.push("", "Skriv /lektion för nästa anhalt, eller /nystart [tema] för en ny resa.");
   return lines.join("\n");
 }
 

@@ -165,6 +165,19 @@ export async function initFrenchDb() {
 
   await sql`ALTER TABLE fr_state ADD COLUMN IF NOT EXISTS last_scenario TEXT`;
   await sql`INSERT INTO fr_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING`;
+
+  // Story-minnet för den sammanhängande reseberättelsen (se story.ts).
+  await sql`
+    CREATE TABLE IF NOT EXISTS fr_story (
+      id         INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      premise    TEXT,
+      location   TEXT,
+      next_hint  TEXT,
+      day        INTEGER NOT NULL DEFAULT 0,
+      beats      JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
 }
 
 // --------------------------------------------------------------------------

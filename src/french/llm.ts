@@ -154,6 +154,115 @@ function isValidError(r: unknown): r is TutorError {
   return !!x && typeof x.category === "string" && typeof x.correction === "string";
 }
 
+export interface StoryPlace {
+  name: string;
+  kind: string;
+  region: string;
+}
+
+export interface StoryLesson {
+  reply: string; // scenen på franska (elevens nivå)
+  explanation_sv?: string;
+  culture_sv: string; // Annas kultur-/historieberättelse
+  place: StoryPlace;
+  new_items: TutorNewItem[];
+  story: { recap: string; location: string; next_hint: string };
+}
+
+export interface StoryLessonInput {
+  systemPrompt: string;
+  premise: string;
+  recentBeats: string;
+  location: string | null;
+  nextHint: string | null;
+  day: number;
+  targetWords: string[];
+  leechWords: string[];
+}
+
+/**
+ * Genererar nästa anhalt i reseberättelsen: en scen på franska + Annas
+ * kultur-/historieberättelse, en riktig plats, nya ord och en story-uppdatering
+ * (vart resan tar vägen härnäst). LLM:en bedömer inget här — bara berättar.
+ */
+export async function generateStoryLesson(input: StoryLessonInput): Promise<StoryLesson> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return mockStoryLesson(input);
+  }
+
+  const model = process.env.FRENCH_MODEL || process.env.OPENAI_MODEL || "gpt-4o";
+  const userContext = [
+    `Premiss: ${input.premise}`,
+    `Resan hittills:`,
+    input.recentBeats,
+    input.location ? `Ni är nu: ${input.location}` : "Ni har inte börjat resan än.",
+    input.nextHint ? `Planerat härnäst: ${input.nextHint}` : "",
+    input.targetWords.length ? `Dagens målord att väva in: ${input.targetWords.join(", ")}` : "",
+    input.leechWords.length ? `Få också med dessa svaga ord: ${input.leechWords.join(", ")}` : "",
+    `Detta är dag ${input.day + 1} på resan.`
+  ].filter(Boolean).join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "content-type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      temperature: 0.8,
+      max_tokens: 1600,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: input.systemPrompt },
+        { role: "user", content: userContext }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI (story-lektion) svarade ${response.status}: ${await response.text()}`);
+  }
+
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return normalizeStoryLesson(JSON.parse(data.choices?.[0]?.message?.content || "{}"));
+}
+
+function normalizeStoryLesson(obj: unknown): StoryLesson {
+  const o = (obj ?? {}) as Record<string, unknown>;
+  const place = (o.place ?? {}) as Record<string, unknown>;
+  const story = (o.story ?? {}) as Record<string, unknown>;
+  return {
+    reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue le voyage ?",
+    explanation_sv: typeof o.explanation_sv === "string" && o.explanation_sv.trim() ? o.explanation_sv.trim() : undefined,
+    culture_sv: typeof o.culture_sv === "string" ? o.culture_sv.trim() : "",
+    place: {
+      name: typeof place.name === "string" && place.name.trim() ? place.name.trim() : "Frankrike",
+      kind: typeof place.kind === "string" ? place.kind.trim() : "plats",
+      region: typeof place.region === "string" ? place.region.trim() : ""
+    },
+    new_items: Array.isArray(o.new_items) ? (o.new_items as TutorNewItem[]).filter(isValidNewItem) : [],
+    story: {
+      recap: typeof story.recap === "string" ? story.recap.trim() : "",
+      location: typeof story.location === "string" && story.location.trim() ? story.location.trim() : "",
+      next_hint: typeof story.next_hint === "string" ? story.next_hint.trim() : ""
+    }
+  };
+}
+
+function mockStoryLesson(input: StoryLessonInput): StoryLesson {
+  return {
+    reply: "« À Paris ✈️ »\nAnna : Bienvenue à Paris ! On commence le voyage. Et toi, ça va ?",
+    explanation_sv: "(mock-läge — ingen OPENAI_API_KEY) Anna hälsar dig välkommen till Paris.",
+    culture_sv: "Mock-läge: här skulle Anna berätta om platsen och dess historia.",
+    place: { name: "Paris", kind: "ville", region: "Île-de-France" },
+    new_items: [],
+    story: {
+      recap: "Du landade i Paris och började resan med Anna.",
+      location: "Paris",
+      next_hint: "Vidare mot en katedral eller ett världskrigsminne."
+    }
+  };
+}
+
 export interface QuizJudgement {
   grade: number; // 1–4
   correct: boolean;
