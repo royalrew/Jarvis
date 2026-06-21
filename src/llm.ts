@@ -145,12 +145,12 @@ function getMockReply(messages: ConversationMessage[]) {
   return "Jag är i mock-läge, men jag lever. Säg vad vi ska reda ut, så håller jag det kort och med lite ryggrad.";
 }
 
-export async function generateTTSBuffer(text: string): Promise<Buffer | null> {
+export async function generateTTSBuffer(text: string, voiceOverride?: string): Promise<Buffer | null> {
   if (!process.env.OPENAI_API_KEY || !text) {
     return null;
   }
 
-  const voice = process.env.JARVIS_VOICE || "onyx";
+  const voice = voiceOverride || process.env.JARVIS_VOICE || "onyx";
   const model = process.env.JARVIS_TTS_MODEL || "tts-1";
 
   const response = await fetch("https://api.openai.com/v1/audio/speech", {

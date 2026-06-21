@@ -2,6 +2,8 @@ import { handleJarvisInput } from "./core.js";
 import { transcribeAudio } from "./transcription.js";
 import { generateTTSBuffer } from "./llm.js";
 import { getBrakReminderMessage, startDailyReminder } from "./reminders.js";
+import { maybeHandleFrench, type FrenchIO } from "./french/commands.js";
+import { startFrenchSchedule } from "./french/schedule.js";
 
 /**
  * Startar polling-loopen för Telegram-boten om API-nycklar finns konfigurerade.
@@ -31,10 +33,23 @@ export function startTelegramBot() {
     timeZone: "Europe/Stockholm",
     label: "BRAK",
     message: () => getBrakReminderMessage("Europe/Stockholm"),
-    onReminder: (message) => sendTelegramMessage(allowedUser, message, token)
+    onReminder: async (message) => {
+      await sendTelegramMessage(allowedUser, message, token);
+    }
   });
 
   console.log("[Telegram] Daglig BRAK-påminnelse aktiv kl. 05:00 Europe/Stockholm.");
+
+  const frenchScheduleVoice = (process.env.FRENCH_TELEGRAM_VOICE || "true").toLowerCase() === "true";
+  const stopFrenchSchedule = startFrenchSchedule({
+    sendMessage: (text) => safeSendTelegramMessage(allowedUser, text, token, "Markdown"),
+    sendVoice: frenchScheduleVoice
+      ? async (frenchText) => {
+          const voiceBuffer = await generateTTSBuffer(frenchText, process.env.FRENCH_VOICE || process.env.JARVIS_VOICE);
+          if (voiceBuffer) await sendTelegramVoice(allowedUser, voiceBuffer, token);
+        }
+      : undefined
+  });
 
   async function poll() {
     while (running) {
@@ -76,8 +91,20 @@ export function startTelegramBot() {
   return () => {
     running = false;
     stopBrakReminder();
+    stopFrenchSchedule();
     console.log("[Telegram] Polling-loop stoppad.");
   };
+}
+
+/**
+ * Försöker skicka med parse-mode och faller tillbaka till ren text om Telegram
+ * vägrar (t.ex. trasig Markdown från fransk text med apostrofer/understreck).
+ */
+async function safeSendTelegramMessage(chatId: number, text: string, token: string, parseMode?: string) {
+  const ok = await sendTelegramMessage(chatId, text, token, parseMode);
+  if (!ok && parseMode) {
+    await sendTelegramMessage(chatId, text, token);
+  }
 }
 
 async function handleUpdate(message: any, token: string, allowedUser: number) {
@@ -90,63 +117,25 @@ async function handleUpdate(message: any, token: string, allowedUser: number) {
   }
 
   try {
+    // 1. Resolva input till { channel, text }. Röst transkriberas först.
+    let channel: "text" | "voice";
+    let text: string;
+
     if (message.text) {
-      const text = message.text.trim();
+      channel = "text";
+      text = message.text.trim();
       console.log(`[Telegram] Textmeddelande: "${text}"`);
-
-      await sendChatAction(chat.id, "typing", token);
-      const result = await handleJarvisInput(text);
-
-      if (result.reply) {
-        await sendTelegramMessage(chat.id, result.reply, token);
-
-        const voiceEnabled = (process.env.JARVIS_TELEGRAM_VOICE || "true").toLowerCase() === "true";
-        if (voiceEnabled) {
-          await sendChatAction(chat.id, "record_voice", token);
-          const voiceBuffer = await generateTTSBuffer(result.reply);
-          if (voiceBuffer) {
-            await sendTelegramVoice(chat.id, voiceBuffer, token);
-          }
-        }
-      }
     } else if (message.voice) {
       const voice = message.voice;
       console.log(`[Telegram] Röstmeddelande mottaget. File ID: ${voice.file_id}, längd: ${voice.duration}s`);
-
       await sendChatAction(chat.id, "typing", token);
 
-      // 1. Hämta filens sökväg från Telegrams API
-      const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${voice.file_id}`);
-      if (!fileResponse.ok) {
-        throw new Error(`Kunde inte hämta filinfo: ${fileResponse.status}`);
-      }
-
-      const fileData = (await fileResponse.json()) as {
-        ok: boolean;
-        result?: { file_path: string };
-      };
-
-      if (!fileData.ok || !fileData.result?.file_path) {
-        throw new Error("Telegram returnerade ogiltig filinfo.");
-      }
-
-      const filePath = fileData.result.file_path;
-
-      // 2. Ladda ner filens binära data
-      const downloadResponse = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
-      if (!downloadResponse.ok) {
-        throw new Error(`Kunde inte ladda ner ljudfilen: ${downloadResponse.status}`);
-      }
-
-      const audioBuffer = Buffer.from(await downloadResponse.arrayBuffer());
-
-      // 3. Skicka till Whisper
+      const audioBuffer = await downloadTelegramFile(voice.file_id, token);
       const transcriptResult = await transcribeAudio({
         audio: audioBuffer,
         mimeType: "audio/ogg",
         durationMs: voice.duration * 1000
       });
-
       const transcript = typeof transcriptResult === "string" ? transcriptResult : transcriptResult.transcript;
 
       if (!transcript) {
@@ -154,25 +143,46 @@ async function handleUpdate(message: any, token: string, allowedUser: number) {
         return;
       }
 
+      channel = "voice";
+      text = transcript;
       console.log(`[Telegram] Transkriberat: "${transcript}"`);
       await sendTelegramMessage(chat.id, `👉 _${transcript}_`, token, "Markdown");
+    } else {
+      await sendTelegramMessage(chat.id, "Jag förstår bara text och röstmeddelanden än så länge.", token);
+      return;
+    }
 
-      // 4. Skicka transkriptionen till Jarvis
-      await sendChatAction(chat.id, "typing", token);
-      const result = await handleJarvisInput(transcript);
+    // 2. Fransk-tutorn får första tjing. Äger den meddelandet är vi klara.
+    const frenchVoiceEnabled = (process.env.FRENCH_TELEGRAM_VOICE || "true").toLowerCase() === "true";
+    const frenchIo: FrenchIO = {
+      send: (msg, markdown) => safeSendTelegramMessage(chat.id, msg, token, markdown ? "Markdown" : undefined),
+      speak: frenchVoiceEnabled
+        ? async (frenchText) => {
+            await sendChatAction(chat.id, "record_voice", token);
+            const voiceBuffer = await generateTTSBuffer(frenchText, process.env.FRENCH_VOICE || process.env.JARVIS_VOICE);
+            if (voiceBuffer) await sendTelegramVoice(chat.id, voiceBuffer, token);
+          }
+        : undefined
+    };
+    await sendChatAction(chat.id, "typing", token);
+    const handledByFrench = await maybeHandleFrench({ channel, text }, frenchIo);
+    if (handledByFrench) return;
 
-      if (result.reply) {
-        await sendTelegramMessage(chat.id, result.reply, token);
+    // 3. Annars: vanliga Jarvis.
+    await sendChatAction(chat.id, "typing", token);
+    const result = await handleJarvisInput(text);
 
-        // 5. Generera och skicka röstsvar
+    if (result.reply) {
+      await sendTelegramMessage(chat.id, result.reply, token);
+
+      const voiceEnabled = (process.env.JARVIS_TELEGRAM_VOICE || "true").toLowerCase() === "true";
+      if (voiceEnabled) {
         await sendChatAction(chat.id, "record_voice", token);
         const voiceBuffer = await generateTTSBuffer(result.reply);
         if (voiceBuffer) {
           await sendTelegramVoice(chat.id, voiceBuffer, token);
         }
       }
-    } else {
-      await sendTelegramMessage(chat.id, "Jag förstår bara text och röstmeddelanden än så länge.", token);
     }
   } catch (error) {
     console.error("[Telegram] Misslyckades med att behandla meddelandet:", error);
@@ -193,7 +203,7 @@ async function sendChatAction(chatId: number, action: "typing" | "record_voice",
   }
 }
 
-async function sendTelegramMessage(chatId: number, text: string, token: string, parseMode?: string) {
+async function sendTelegramMessage(chatId: number, text: string, token: string, parseMode?: string): Promise<boolean> {
   const body: { chat_id: number; text: string; parse_mode?: string } = {
     chat_id: chatId,
     text
@@ -211,7 +221,29 @@ async function sendTelegramMessage(chatId: number, text: string, token: string, 
 
   if (!response.ok) {
     console.error(`[Telegram] sendMessage misslyckades: ${response.status}`, await response.text());
+    return false;
   }
+  return true;
+}
+
+/** Hämtar och laddar ner en Telegram-fil (röstnot) som Buffer. */
+async function downloadTelegramFile(fileId: string, token: string): Promise<Buffer> {
+  const fileResponse = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+  if (!fileResponse.ok) {
+    throw new Error(`Kunde inte hämta filinfo: ${fileResponse.status}`);
+  }
+
+  const fileData = (await fileResponse.json()) as { ok: boolean; result?: { file_path: string } };
+  if (!fileData.ok || !fileData.result?.file_path) {
+    throw new Error("Telegram returnerade ogiltig filinfo.");
+  }
+
+  const downloadResponse = await fetch(`https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`);
+  if (!downloadResponse.ok) {
+    throw new Error(`Kunde inte ladda ner ljudfilen: ${downloadResponse.status}`);
+  }
+
+  return Buffer.from(await downloadResponse.arrayBuffer());
 }
 
 async function sendTelegramVoice(chatId: number, voiceBuffer: Buffer, token: string) {

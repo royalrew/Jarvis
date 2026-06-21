@@ -23,6 +23,14 @@ function db() {
   return sql;
 }
 
+/**
+ * Delad Postgres-anslutning för andra moduler (t.ex. fransk-tutorn i src/french/).
+ * Återanvänder samma pool så vi inte öppnar flera anslutningar mot Railway.
+ */
+export function getSql() {
+  return db();
+}
+
 export async function initDb() {
   const q = db();
 
