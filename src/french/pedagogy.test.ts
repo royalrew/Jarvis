@@ -8,9 +8,11 @@ test("första scenen har minimal aktiv belastning", () => {
   assert.equal(policy.leechWords, 0);
   assert.equal(policy.maxNewItems, 0);
   assert.equal(policy.sentenceStarters, 1);
-  assert.equal(policy.frenchMaxWords, 25);
+  assert.equal(policy.frenchMaxWords, 12);
   assert.equal(policy.responseMaxWords, 4);
   assert.equal(policy.translateAllFrench, true);
+  assert.equal(policy.gentleStart, true);
+  assert.equal(policy.wordBankMax, 1);
   assert.ok(policy.frenchMaxWords < lessonPedagogy("A1").frenchMaxWords);
 });
 

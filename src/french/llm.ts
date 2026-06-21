@@ -209,6 +209,7 @@ export interface StoryLessonInput {
   maxNewItems: number;
   sentenceStarters: number;
   wordBankMax: number;
+  gentleStart: boolean;
   mysteryContext: MysteryLessonContext;
 }
 
@@ -263,11 +264,12 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     input.maxNewItems,
     input.sentenceStarters,
     input.wordBankMax,
+    input.gentleStart,
     [...input.targetWords, ...input.leechWords]
   );
 }
 
-function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, maxWordBank: number, activeWords: string[]): StoryLesson {
+function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, maxWordBank: number, gentleStart: boolean, activeWords: string[]): StoryLesson {
   const o = (obj ?? {}) as Record<string, unknown>;
   const place = (o.place ?? {}) as Record<string, unknown>;
   const scene = (o.scene ?? {}) as Record<string, unknown>;
@@ -288,15 +290,23 @@ function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStar
     reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue le voyage ?",
     explanation_sv: typeof o.explanation_sv === "string" && o.explanation_sv.trim() ? o.explanation_sv.trim() : undefined,
     culture_sv: typeof o.culture_sv === "string" ? o.culture_sv.trim() : "",
-    mission_sv: typeof o.mission_sv === "string" && o.mission_sv.trim() ? o.mission_sv.trim() : "Svara på franska och se vad som händer.",
+    mission_sv: gentleStart
+      ? "Svara personen med dagens enda glosa. Du behöver inte bilda en mening."
+      : typeof o.mission_sv === "string" && o.mission_sv.trim() ? o.mission_sv.trim() : "Svara på franska och se vad som händer.",
     response_support: {
-      instruction_sv: typeof support.instruction_sv === "string" && support.instruction_sv.trim()
+      instruction_sv: gentleStart
+        ? "Skriv eller säg bara dagens glosa."
+        : typeof support.instruction_sv === "string" && support.instruction_sv.trim()
         ? support.instruction_sv.trim()
         : "Svara med en kort mening på franska.",
-      sentence_starters: generatedStarters.length
+      sentence_starters: gentleStart && firstActiveWord
+        ? [`${firstActiveWord}…`]
+        : generatedStarters.length
         ? generatedStarters
         : fallbackStarters.slice(0, maxSentenceStarters),
-      word_bank: generatedWordBank.length
+      word_bank: gentleStart
+        ? activeWords.slice(0, 1)
+        : generatedWordBank.length
         ? generatedWordBank
         : activeWords.slice(0, maxWordBank),
       rescue_sv: typeof support.rescue_sv === "string" && support.rescue_sv.trim()

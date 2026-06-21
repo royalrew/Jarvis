@@ -9,6 +9,7 @@ import {
   createLesson,
   setLessonStatus,
   getLesson,
+  getLatestLesson,
   setLessonPayload,
   type Channel
 } from "./db.js";
@@ -44,6 +45,7 @@ const FRENCH_COMMANDS = new Set([
   "/kurs", "/seed", "/avstämning", "/avstamning",
   "/story", "/resa", "/berättelse", "/berattelse", "/nystart",
   "/mysterium", "/mystery", "/teori", "/slutteori",
+  "/glosor",
   "/hjälp", "/hjalp", "/meny", "/avbryt", "/sluta"
 ]);
 
@@ -54,6 +56,7 @@ const BUTTON_TO_COMMAND: Record<string, string> = {
   "🗺️ Kurs": "/kurs",
   "📋 Testa mig": "/avstämning",
   "🔥 Streak": "/streak",
+  "🧠 Glosor": "/glosor",
   "💬 Prata franska": "/franska",
   "🔎 Mysteriet": "/mysterium",
   "❓ Hjälp": "/hjalp"
@@ -64,7 +67,7 @@ export const FRENCH_KEYBOARD = {
   keyboard: [
     [{ text: "📖 Lektion" }, { text: "🧳 Min resa" }],
     [{ text: "🗺️ Kurs" }, { text: "📋 Testa mig" }],
-    [{ text: "🔥 Streak" }, { text: "💬 Prata franska" }],
+    [{ text: "🧠 Glosor" }, { text: "🔥 Streak" }, { text: "💬 Prata franska" }],
     [{ text: "🔎 Mysteriet" }, { text: "❓ Hjälp" }]
   ],
   resize_keyboard: true,
@@ -81,6 +84,7 @@ export const FRENCH_BOT_COMMANDS = [
   { command: "uttal", description: "🔊 Uttalsdrill för ett ord" },
   { command: "streak", description: "🔥 Streak och statistik" },
   { command: "svaga", description: "🎯 Dina svagaste ord" },
+  { command: "glosor", description: "🧠 Senaste lektionens glosor" },
   { command: "franska", description: "💬 Slå på fritt franskt samtal" },
   { command: "lage", description: "🔁 Växla immersion/studie" },
   { command: "nystart", description: "🆕 Börja en ny resa" },
@@ -102,6 +106,7 @@ export function naturalCommand(text: string): { command: string; arg: string } |
   if (has("lära mig franska", "lara mig franska", "lär mig franska", "lar mig franska", "öva franska", "ova franska", "träna franska", "trana franska", "studera franska")) return { command: "/lektion", arg: "" };
   if (has("min resa", "visa resan", "berättelse", "berattelse", "reserutt", "var har jag varit")) return { command: "/story", arg: "" };
   if (has("mysteriet", "visa ledtrådar", "mina ledtrådar", "detektivbok")) return { command: "/mysterium", arg: "" };
+  if (has("glosor", "dagens ord", "visa orden", "mina ord")) return { command: "/glosor", arg: "" };
   if (has("nästa lektion", "nasta lektion", "ny lektion", "dagens lektion", "fortsätt resan", "fortsatt resan")) return { command: "/lektion", arg: "" };
   if (has("min kurs", "kurskarta", "var är jag i kursen", "hur långt har jag", "hur langt har jag", "kursöversikt", "kursoversikt")) return { command: "/kurs", arg: "" };
   if (has("delprov", "grand test", "veckans prov", "kör ett prov", "kor ett prov")) return { command: "/delprov", arg: "" };
@@ -246,6 +251,10 @@ async function runFrenchCommand(command: string, arg: string, io: FrenchIO): Pro
       await io.send(await renderCourseMap(), true);
       return true;
 
+    case "/glosor":
+      await io.send(await renderVocabulary(), true);
+      return true;
+
     case "/story":
     case "/resa":
     case "/berättelse":
@@ -361,6 +370,7 @@ function helpText(): string {
     "🗺️ *Kurs* — din karta och var du står",
     "📋 *Testa mig* — läxförhör på delen du läser",
     "🔥 *Streak* — dagar i rad + statistik",
+    "🧠 *Glosor* — dagens aktiva ord med betydelse och uttal",
     "💬 *Prata franska* — fritt samtal",
     "🔎 *Mysteriet* — detektivboken, ledtrådar och teorier",
     "",
@@ -438,6 +448,29 @@ async function renderWeak(): Promise<string> {
       lines.push(`• ${l.lemma} = ${l.meta.translation}${tip} — ${l.kind}`);
     }
   }
+  return lines.join("\n");
+}
+
+async function renderVocabulary(): Promise<string> {
+  const state = await getState();
+  const lesson = state.activeLessonId
+    ? await getLesson(state.activeLessonId)
+    : await getLatestLesson("daily");
+  const raw = Array.isArray(lesson?.payload?.activeVocabulary) ? lesson.payload.activeVocabulary : [];
+  const vocabulary = raw.filter((item): item is { lemma: string; translation: string; pronunciation?: string; genre?: string } => {
+    if (!item || typeof item !== "object") return false;
+    const value = item as Record<string, unknown>;
+    return typeof value.lemma === "string" && typeof value.translation === "string";
+  });
+  if (!vocabulary.length) return "🧠 Inga lektionsglosor sparade ännu. Starta en lektion så bygger vi första listan.";
+
+  const lines = ["🧠 *Senaste lektionens glosor*"];
+  for (const item of vocabulary) {
+    const genre = item.genre ? ` (${item.genre})` : "";
+    lines.push("", `• *${item.lemma}*${genre} — ${item.translation}`);
+    if (item.pronunciation) lines.push(`  Uttal: _${item.pronunciation}_`);
+  }
+  lines.push("", "Orden återkommer i scener, återkallning och avstämningar.");
   return lines.join("\n");
 }
 

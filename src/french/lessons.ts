@@ -7,7 +7,8 @@ import {
   pinLeech,
   updateState,
   type Channel,
-  type FacetKind
+  type FacetKind,
+  type ItemMeta
 } from "./db.js";
 import { MASTERY_STABILITY, allowedKinds } from "./fsrs.js";
 import { applyTurn } from "./tutor.js";
@@ -32,6 +33,13 @@ export interface BuiltLesson {
   theme: string;
 }
 
+export interface LessonVocabulary {
+  lemma: string;
+  translation: string;
+  pronunciation?: string;
+  genre?: string;
+}
+
 /**
  * Bygger nästa dynamiska kapitel i Jimmys liv och resa genom Frankrike.
  * Modellen väljer situationen utifrån världsminnet; kursmotorn äger målord,
@@ -46,6 +54,7 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
   const { getCurrentModule } = await import("./curriculum.js");
   const current = await getCurrentModule();
   let targetWords: string[] = [];
+  let targetVocabulary: LessonVocabulary[] = [];
   let levelLabel = "A1 nybörjare";
   let gentleStart = story.day === 0;
   if (current) {
@@ -53,13 +62,16 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     levelLabel = `${current.module.split(".")[0]} – ${current.theme}`;
     gentleStart = current.module === "A1.1" && story.day < 3;
     const policy = lessonPedagogy(levelLabel, gentleStart);
-    targetWords = items.filter((it) => !it.mastered).slice(0, policy.targetWords).map((it) => `${it.lemma} (${it.meta.translation})`);
+    const selected = items.filter((it) => !it.mastered).slice(0, policy.targetWords);
+    targetWords = selected.map((it) => `${it.lemma} (${it.meta.translation})`);
+    targetVocabulary = selected.map((it) => vocabularyItem(it.lemma, it.meta));
   } else {
     const { getLearnerLevel } = await import("./curriculum.js");
     levelLabel = `${await getLearnerLevel()} – repetition och fördjupning`;
     const policy = lessonPedagogy(levelLabel, gentleStart);
     const due = await getDueFacets(policy.targetWords);
     targetWords = due.map((f) => `${f.lemma} (${f.meta.translation})`);
+    targetVocabulary = due.map((f) => vocabularyItem(f.lemma, f.meta));
   }
 
   const policy = lessonPedagogy(levelLabel, gentleStart);
@@ -82,6 +94,7 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     maxNewItems: policy.maxNewItems,
     sentenceStarters: policy.sentenceStarters,
     wordBankMax: policy.wordBankMax,
+    gentleStart: policy.gentleStart,
     mysteryContext
   });
 
@@ -90,6 +103,13 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     { reply: lesson.reply, explanation_sv: lesson.explanation_sv, new_items: lesson.new_items, reviews: [], errors: [] },
     "text"
   );
+
+  const vocabulary = dedupeVocabulary([
+    ...targetVocabulary,
+    ...leeches.map((item) => vocabularyItem(item.lemma, item.meta)),
+    ...lesson.new_items.map((item) => vocabularyItem(item.lemma, item.meta))
+  ]);
+  const activeWords = vocabulary.map((item) => `${item.lemma} (${item.translation})`);
 
   // Flytta berättelsen framåt.
   const newDay = story.day + 1;
@@ -121,14 +141,16 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     frenchMaxWords: policy.frenchMaxWords,
     responseMaxWords: policy.responseMaxWords,
     translateAllFrench: policy.translateAllFrench,
-    activeWords: [...targetWords, ...leechWords]
+    activeWords,
+    activeVocabulary: vocabulary
   });
   await updateState({ activeLessonId: lessonId, activeQuizId: null, chatActive: false, lastLessonDate: date });
 
   const messages = [
     `🎬 *${lesson.scene.title}*\n📍 ${lesson.place.name}${lesson.place.region ? ` · ${lesson.place.region}` : ""}${lesson.setting_sv ? `\n\n${lesson.setting_sv}` : ""}`,
+    renderVocabularyMessage(vocabulary),
     `🇫🇷 *Scenen*\n\n${lesson.reply}`
-  ];
+  ].filter(Boolean);
   if (lesson.explanation_sv) messages.push(`🗝️ *Språknyckel*\n\n${lesson.explanation_sv}`);
   if (lesson.culture_sv) messages.push(`🏛️ *Kultur och historia*\n\n${lesson.culture_sv}`);
   const support = lesson.response_support;
@@ -153,6 +175,30 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     reply: lesson.reply,
     theme: lesson.place.name
   };
+}
+
+function vocabularyItem(lemma: string, meta: Pick<ItemMeta, "translation" | "svensk_ljudharmning" | "genre">): LessonVocabulary {
+  return {
+    lemma,
+    translation: meta.translation,
+    pronunciation: meta.svensk_ljudharmning,
+    genre: meta.genre
+  };
+}
+
+function dedupeVocabulary(items: LessonVocabulary[]): LessonVocabulary[] {
+  return [...new Map(items.map((item) => [item.lemma.toLowerCase(), item])).values()];
+}
+
+function renderVocabularyMessage(items: LessonVocabulary[]): string {
+  if (!items.length) return "";
+  const lines = ["🧠 *Dagens glosor*", "", "Det här är orden du aktivt tränar idag:"];
+  for (const item of items) {
+    const genre = item.genre ? ` (${item.genre})` : "";
+    lines.push(`• *${item.lemma}*${genre} — ${item.translation}`);
+    if (item.pronunciation) lines.push(`  Uttal: _${item.pronunciation}_`);
+  }
+  return lines.join("\n");
 }
 
 // --------------------------------------------------------------------------

@@ -48,6 +48,9 @@ export function storyLessonPrompt(levelLabel: string, cast: string, travelIntere
     `Jimmys reseintressen och möjliga framtida mål (inspiration, INTE en checklista eller fast rutt): ${travelInterests}`,
     `Elevens nivå: ${levelLabel}. Franskan i 'reply' ska ligga på den nivån — enkel och tydlig på A1.`,
     `Pedagogisk belastningsbudget: ${pedagogy.guidance} Högst ${pedagogy.targetWords} aktiva målord, ${pedagogy.leechWords} svagt ord och ${pedagogy.maxNewItems} helt nya aktiva ord.`,
+    pedagogy.gentleStart
+      ? "ABSOLUT MJUKSTART: Eleven kan ingen franska. Den sista repliken ska vara en enkel hälsning eller situation där dagens ENDA målord är ett naturligt och fullständigt svar. Fråga inte vad han vill göra, be honom inte välja aktivitet och kräv ingen mening. Använd inga svarskonstruktioner som « je veux »."
+      : "",
     "",
     "VIKTIGAST: 'reply' är själva scenen — en dialog på franska — och får ALDRIG vara tom eller bara en fras. Det är hjärtat i lektionen.",
     "",
@@ -75,7 +78,7 @@ export function storyLessonPrompt(levelLabel: string, cast: string, travelIntere
     `2) 'reply': en rubrik följd av ${pedagogy.frenchMinLines}–${pedagogy.frenchMaxLines} mycket nivåanpassade franska rader, totalt högst ${pedagogy.frenchMaxWords} franska ord. Skriv aldrig Jimmys svar åt honom. Avsluta med EN konkret replik riktad till honom.`,
     "3) Väv in dagens MÅLORD och svaga ord naturligt; använd inte ordlistor i dialogen.",
     `4) 'explanation_sv': en pedagogisk språknyckel med betydelser och precis den grammatik som behövs.${pedagogy.translateAllFrench ? " Översätt och förklara VARJE fransk rad; inget franskt innehåll får lämnas oförklarat." : " Anpassa mängden efter nivån."}`,
-    "5) 'culture_sv': 2–5 stycken kultur eller historia när scenen ger en naturlig anledning. Annars tom sträng. Det får vara berättande och intressant, inte ett torrt faktablock.",
+    `5) 'culture_sv': ${pedagogy.gentleStart ? "högst två korta svenska meningar direkt kopplade till dagens ord" : "2–5 stycken kultur eller historia när scenen ger en naturlig anledning; annars tom sträng"}. Det får vara berättande och intressant, inte ett torrt faktablock.`,
     `6) 'mission_sv': ett tydligt, öppet uppdrag som kan besvaras med högst ${pedagogy.responseMaxWords} franska ord. Kräv aldrig att nybörjaren översätter sin svenska startsats eller producerar språk som inte redan lärts ut.`,
     `7) 'response_support': bygg en direkt bro från språknyckeln till Jimmys svar. instruction_sv säger exakt hur kort svaret får vara. sentence_starters innehåller exakt ${pedagogy.sentenceStarters} franska starter med … eller ___, aldrig färdiga facitsvar. word_bank innehåller högst ${pedagogy.wordBankMax} relevanta ord/fraser MED svensk betydelse och endast sådant som redan lärts ut. rescue_sv säger att svenska är tillåtet om han fastnar och att tutorn då hjälper honom tillbaka till franska.`,
     "8) Meningsstarterna och ordmenyn måste passa exakt till mission_sv. Eleven ska kunna konstruera ett rimligt eget svar genom att kombinera dem, utan att facit skrivs åt honom.",

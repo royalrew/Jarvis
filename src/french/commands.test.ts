@@ -11,3 +11,7 @@ test("lära och öva franska startar alltid en stöttad lektion", () => {
 test("uttrycklig fri konversation lämnas till intentklassificeringen", () => {
   assert.equal(naturalCommand("Prata franska med mig"), null);
 });
+
+test("glosor kan öppnas med naturligt språk", () => {
+  assert.equal(naturalCommand("Visa dagens glosor")?.command, "/glosor");
+});

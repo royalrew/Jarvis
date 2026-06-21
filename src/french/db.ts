@@ -430,6 +430,11 @@ export async function getLesson(id: string): Promise<FrenchLesson | null> {
   return rowToLesson(rows[0]);
 }
 
+export async function getLatestLesson(type: LessonType): Promise<FrenchLesson | null> {
+  const rows = await getSql()`SELECT * FROM fr_lessons WHERE type = ${type} ORDER BY created_at DESC LIMIT 1`;
+  return rows[0] ? rowToLesson(rows[0]) : null;
+}
+
 export async function setLessonStatus(id: string, status: LessonStatus) {
   await getSql()`UPDATE fr_lessons SET status = ${status} WHERE id = ${id}`;
 }
