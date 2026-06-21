@@ -165,6 +165,7 @@ export interface StoryLesson {
   explanation_sv?: string;
   culture_sv: string; // Annas kultur-/historieberättelse
   place: StoryPlace;
+  scene: { kind: string; title: string };
   new_items: TutorNewItem[];
   story: { recap: string; location: string; next_hint: string };
 }
@@ -178,6 +179,7 @@ export interface StoryLessonInput {
   day: number;
   targetWords: string[];
   leechWords: string[];
+  sceneRequest?: string;
 }
 
 /**
@@ -197,7 +199,8 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     `Resan hittills:`,
     input.recentBeats,
     input.location ? `Ni är nu: ${input.location}` : "Ni har inte börjat resan än.",
-    input.nextHint ? `Planerat härnäst: ${input.nextHint}` : "",
+    input.nextHint ? `En öppen möjlighet från förra scenen (inte ett krav): ${input.nextHint}` : "",
+    input.sceneRequest ? `Jimmys önskemål för nästa scen: ${input.sceneRequest}` : "",
     input.targetWords.length ? `Dagens målord att väva in: ${input.targetWords.join(", ")}` : "",
     input.leechWords.length ? `Få också med dessa svaga ord: ${input.leechWords.join(", ")}` : "",
     `Detta är dag ${input.day + 1} på resan.`
@@ -229,6 +232,7 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
 function normalizeStoryLesson(obj: unknown): StoryLesson {
   const o = (obj ?? {}) as Record<string, unknown>;
   const place = (o.place ?? {}) as Record<string, unknown>;
+  const scene = (o.scene ?? {}) as Record<string, unknown>;
   const story = (o.story ?? {}) as Record<string, unknown>;
   return {
     reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue le voyage ?",
@@ -238,6 +242,10 @@ function normalizeStoryLesson(obj: unknown): StoryLesson {
       name: typeof place.name === "string" && place.name.trim() ? place.name.trim() : "Frankrike",
       kind: typeof place.kind === "string" ? place.kind.trim() : "plats",
       region: typeof place.region === "string" ? place.region.trim() : ""
+    },
+    scene: {
+      kind: typeof scene.kind === "string" && scene.kind.trim() ? scene.kind.trim() : "vardag",
+      title: typeof scene.title === "string" && scene.title.trim() ? scene.title.trim() : "Nästa scen"
     },
     new_items: Array.isArray(o.new_items) ? (o.new_items as TutorNewItem[]).filter(isValidNewItem) : [],
     story: {
@@ -254,11 +262,12 @@ function mockStoryLesson(input: StoryLessonInput): StoryLesson {
     explanation_sv: "(mock-läge — ingen OPENAI_API_KEY) Anna hälsar dig välkommen till Paris.",
     culture_sv: "Mock-läge: här skulle Anna berätta om platsen och dess historia.",
     place: { name: "Paris", kind: "ville", region: "Île-de-France" },
+    scene: { kind: "ankomst", title: "Första dagen i Frankrike" },
     new_items: [],
     story: {
       recap: "Du landade i Paris och började resan med Anna.",
       location: "Paris",
-      next_hint: "Vidare mot en katedral eller ett världskrigsminne."
+      next_hint: "Hitta ett sätt att ta sig från flygplatsen."
     }
   };
 }

@@ -9,6 +9,7 @@ import { gradeFacet, isKindAllowed, allowedKinds, type GradeOutcome } from "./fs
 import { callTutorTurn, type TutorTurn, type TutorMessage } from "./llm.js";
 import { tutorSystemPrompt } from "./prompts.js";
 import { getState } from "./db.js";
+import { CAST, TRAVEL_INTERESTS, getStory, summarizeRecentBeats } from "./story.js";
 
 /**
  * Turn-orkestreringen (M2). Binder ihop LLM-kontraktet med det deterministiska
@@ -98,12 +99,23 @@ export async function applyTurn(turn: TutorTurn, channel: Channel): Promise<Turn
 /** Bygger en kort kontextsträng av förfallna facetter för LLM:en. */
 async function buildContext(channel: Channel): Promise<string> {
   const due = await getDueFacets(8, allowedKinds(channel));
-  if (due.length === 0) return "";
   const lines = due.map((f) => {
     const tip = f.meta.svensk_ljudharmning ? ` [uttal: ${f.meta.svensk_ljudharmning}]` : "";
     return `- ${f.lemma} (${f.kind}) = ${f.meta.translation}${tip}`;
   });
-  return ["Förfallna repetitioner att gärna väva in:", ...lines].join("\n");
+  const story = await getStory();
+  return [
+    "PÅGÅENDE VÄRLD (fortsätt den fritt; behandla inte detta som en ny fristående chatt):",
+    `Premiss: ${story.premise}`,
+    `Karaktärer: ${CAST}`,
+    `Reseintressen (möjligheter, inte en fast rutt): ${TRAVEL_INTERESTS}`,
+    `Nuvarande plats: ${story.location ?? "resan har inte börjat"}`,
+    story.nextHint ? `Öppen tråd: ${story.nextHint}` : "",
+    summarizeRecentBeats(story, 6),
+    "",
+    "Förfallna repetitioner att gärna väva in:",
+    ...(lines.length ? lines : ["(inga just nu)"])
+  ].filter(Boolean).join("\n");
 }
 
 function pushHistory(msg: TutorMessage) {

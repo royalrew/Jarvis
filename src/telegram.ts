@@ -2,7 +2,7 @@ import { handleJarvisInput } from "./core.js";
 import { transcribeAudio } from "./transcription.js";
 import { generateTTSBuffer } from "./llm.js";
 import { getBrakReminderMessage, startDailyReminder } from "./reminders.js";
-import { maybeHandleFrench, type FrenchIO } from "./french/commands.js";
+import { maybeHandleFrench, FRENCH_KEYBOARD, FRENCH_BOT_COMMANDS, type FrenchIO } from "./french/commands.js";
 import { startFrenchSchedule } from "./french/schedule.js";
 
 /**
@@ -25,6 +25,7 @@ export function startTelegramBot() {
   }
 
   console.log(`[Telegram] Startar bot. Låst till User ID: ${allowedUser}`);
+  void registerBotCommands(token);
   let offset = 0;
   let running = true;
   const stopBrakReminder = startDailyReminder({
@@ -100,10 +101,28 @@ export function startTelegramBot() {
  * Försöker skicka med parse-mode och faller tillbaka till ren text om Telegram
  * vägrar (t.ex. trasig Markdown från fransk text med apostrofer/understreck).
  */
-async function safeSendTelegramMessage(chatId: number, text: string, token: string, parseMode?: string) {
-  const ok = await sendTelegramMessage(chatId, text, token, parseMode);
+async function safeSendTelegramMessage(chatId: number, text: string, token: string, parseMode?: string, replyMarkup?: unknown) {
+  const ok = await sendTelegramMessage(chatId, text, token, parseMode, replyMarkup);
   if (!ok && parseMode) {
-    await sendTelegramMessage(chatId, text, token);
+    await sendTelegramMessage(chatId, text, token, undefined, replyMarkup);
+  }
+}
+
+/** Registrerar fransk-kommandona i Telegrams "/"-meny så de blir upptäckbara. */
+async function registerBotCommands(token: string) {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ commands: FRENCH_BOT_COMMANDS })
+    });
+    if (!response.ok) {
+      console.error("[Telegram] setMyCommands misslyckades:", response.status, await response.text());
+    } else {
+      console.log("[Telegram] Kommando-meny registrerad.");
+    }
+  } catch (err) {
+    console.error("[Telegram] setMyCommands fel:", err);
   }
 }
 
@@ -155,7 +174,13 @@ async function handleUpdate(message: any, token: string, allowedUser: number) {
     // 2. Fransk-tutorn får första tjing. Äger den meddelandet är vi klara.
     const frenchVoiceEnabled = (process.env.FRENCH_TELEGRAM_VOICE || "true").toLowerCase() === "true";
     const frenchIo: FrenchIO = {
-      send: (msg, markdown) => safeSendTelegramMessage(chat.id, msg, token, markdown ? "Markdown" : undefined),
+      send: (msg, markdown) => safeSendTelegramMessage(
+        chat.id,
+        msg,
+        token,
+        markdown ? "Markdown" : undefined,
+        FRENCH_KEYBOARD
+      ),
       speak: frenchVoiceEnabled
         ? async (frenchText) => {
             await sendChatAction(chat.id, "record_voice", token);
@@ -203,14 +228,23 @@ async function sendChatAction(chatId: number, action: "typing" | "record_voice",
   }
 }
 
-async function sendTelegramMessage(chatId: number, text: string, token: string, parseMode?: string): Promise<boolean> {
-  const body: { chat_id: number; text: string; parse_mode?: string } = {
+async function sendTelegramMessage(
+  chatId: number,
+  text: string,
+  token: string,
+  parseMode?: string,
+  replyMarkup?: unknown
+): Promise<boolean> {
+  const body: { chat_id: number; text: string; parse_mode?: string; reply_markup?: unknown } = {
     chat_id: chatId,
     text
   };
 
   if (parseMode) {
     body.parse_mode = parseMode;
+  }
+  if (replyMarkup) {
+    body.reply_markup = replyMarkup;
   }
 
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

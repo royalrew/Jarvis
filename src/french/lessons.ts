@@ -13,7 +13,7 @@ import { MASTERY_STABILITY, allowedKinds } from "./fsrs.js";
 import { applyTurn } from "./tutor.js";
 import { generateStoryLesson } from "./llm.js";
 import { storyLessonPrompt } from "./prompts.js";
-import { CAST, getStory, initStoryIfNeeded, updateStory, appendBeat, summarizeRecentBeats } from "./story.js";
+import { CAST, TRAVEL_INTERESTS, getStory, initStoryIfNeeded, updateStory, appendBeat, summarizeRecentBeats } from "./story.js";
 import { todayStockholm } from "./time.js";
 
 /**
@@ -36,7 +36,7 @@ export interface BuiltLesson {
  * och övar orden i din aktuella kursmodul. Annas historieberättelse ligger på
  * svenska för nybörjaren (mer franska högre upp).
  */
-export async function buildDailyLesson(): Promise<BuiltLesson> {
+export async function buildDailyLesson(sceneRequest?: string): Promise<BuiltLesson> {
   const date = todayStockholm();
   await initStoryIfNeeded();
   const story = await getStory();
@@ -61,14 +61,15 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
   const leechWords = leeches.map((l) => l.lemma);
 
   const lesson = await generateStoryLesson({
-    systemPrompt: storyLessonPrompt(levelLabel, CAST),
+    systemPrompt: storyLessonPrompt(levelLabel, CAST, TRAVEL_INTERESTS),
     premise: story.premise,
     recentBeats: summarizeRecentBeats(story),
     location: story.location,
     nextHint: story.nextHint,
     day: story.day,
     targetWords,
-    leechWords
+    leechWords,
+    sceneRequest
   });
 
   // Spara nya ord lektionen introducerar (inga reviews än).
@@ -85,12 +86,18 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     location: newLocation,
     placeName: lesson.place.name,
     placeKind: lesson.place.kind,
-    recap: lesson.story.recap
+    recap: lesson.story.recap,
+    sceneKind: lesson.scene.kind
   });
   await updateStory({ location: newLocation, nextHint: lesson.story.next_hint, day: newDay });
 
   const facetIds = leeches.map((l) => l.id);
-  const lessonId = await createLesson("daily", date, lesson.place.name, facetIds, { kind: "daily", day: newDay, place: lesson.place });
+  const lessonId = await createLesson("daily", date, lesson.place.name, facetIds, {
+    kind: "daily",
+    day: newDay,
+    place: lesson.place,
+    scene: lesson.scene
+  });
   await updateState({ activeLessonId: lessonId, activeQuizId: null, chatActive: false, lastLessonDate: date });
 
   const parts = [lesson.reply];

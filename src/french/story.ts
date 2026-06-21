@@ -12,10 +12,24 @@ import { getSql } from "../db.js";
  */
 
 export const DEFAULT_PREMISE =
+  "Du landar på Charles de Gaulle utan att kunna franska och bygger steg för steg ett verkligt liv i Frankrike. Resan blandar vardag, relationer, kultur, historia, slott och platser kopplade till första och andra världskriget. Händelserna uppstår fritt ur det som redan har hänt; det finns ingen fast rutt.";
+
+const LEGACY_PREMISE =
   "Du gör en bildningsresa genom Frankrike tillsammans med Anna, en kunnig fransk guide som visar dig slott, kyrkor och katedraler samt första och andra världskrigets platser, och berättar levande om landets kultur och historia.";
 
 export const CAST =
-  "Du (Jimmy) är resenären. Anna är din franska guide som lär dig språket OCH berättar om kultur och historia. Övriga bipersoner (servitörer, museivärdar, lokalbor) får hittas på efter behov.";
+  "Du (Jimmy) är ny i Frankrike. Anna är din första vän och återkommande reskamrat, inte en ständig lärare eller guide. Skapa fritt trovärdiga återkommande personer när världen behöver dem: grannar, vårdpersonal, servitörer, kollegor, guider, lokalbor och vänner.";
+
+/** Intressen och möjliga resmål — inspiration för modellen, aldrig en fast rutt. */
+export const TRAVEL_INTERESTS = [
+  "Paris historiska miljöer, Versailles och Fontainebleau",
+  "Loiredalens slott, exempelvis Chambord, Chenonceau och Amboise",
+  "medeltida platser som Mont-Saint-Michel och Carcassonne",
+  "Reims och andra platser som berättar om Frankrikes kungar och samhällsutveckling",
+  "första världskrigets Verdun, Douaumont, Somme och Chemin des Dames",
+  "andra världskrigets Normandie, Caen, Bayeux, Paris under ockupationen, Oradour-sur-Glane, Alsace och Maginotlinjen",
+  "regional kultur i bland annat Normandie, Bretagne, Alsace, Provence och Occitanien"
+].join("; ");
 
 export interface StoryBeat {
   day: number;
@@ -23,6 +37,8 @@ export interface StoryBeat {
   placeName: string;
   placeKind: string;
   recap: string;
+  /** Fri scenkategori från modellen, t.ex. vardag, relation, resa eller historia. */
+  sceneKind?: string;
 }
 
 export interface Story {
@@ -59,6 +75,8 @@ export async function initStoryIfNeeded(): Promise<void> {
     VALUES (1, ${DEFAULT_PREMISE}, 0, '[]'::jsonb)
     ON CONFLICT (id) DO NOTHING
   `;
+  // Uppgradera enbart den gamla standardpremissen. Egna premisser lämnas orörda.
+  await sql`UPDATE fr_story SET premise = ${DEFAULT_PREMISE}, updated_at = now() WHERE id = 1 AND premise = ${LEGACY_PREMISE}`;
 }
 
 export async function updateStory(patch: Partial<{ premise: string; location: string; nextHint: string; day: number }>) {
@@ -102,6 +120,6 @@ export function summarizeRecentBeats(story: Story, count = 8): string {
   if (story.beats.length === 0) return "(resan har inte börjat än — detta är första anhalten)";
   return story.beats
     .slice(-count)
-    .map((b) => `Dag ${b.day}: ${b.placeName} (${b.placeKind}) — ${b.recap}`)
+    .map((b) => `Scen ${b.day}: ${b.placeName} (${b.placeKind}${b.sceneKind ? `, ${b.sceneKind}` : ""}) — ${b.recap}`)
     .join("\n");
 }

@@ -40,114 +40,89 @@ const FRENCH_COMMANDS = new Set([
   "/lektion", "/delprov", "/streak", "/svaga", "/uttal", "/läge", "/lage",
   "/kurs", "/seed", "/avstämning", "/avstamning",
   "/story", "/resa", "/berättelse", "/berattelse", "/nystart",
-  "/avbryt", "/sluta"
+  "/hjälp", "/hjalp", "/meny", "/avbryt", "/sluta"
 ]);
+
+/** Tappbara knappar i chatten → kommando. En knapptryckning är ett tydligt val. */
+const BUTTON_TO_COMMAND: Record<string, string> = {
+  "📖 Lektion": "/lektion",
+  "🧳 Min resa": "/story",
+  "🗺️ Kurs": "/kurs",
+  "📋 Testa mig": "/avstämning",
+  "🔥 Streak": "/streak",
+  "💬 Prata franska": "/franska",
+  "❓ Hjälp": "/hjalp"
+};
+
+/** Persistent knappbord som följer med franska svar (skickas från telegram.ts). */
+export const FRENCH_KEYBOARD = {
+  keyboard: [
+    [{ text: "📖 Lektion" }, { text: "🧳 Min resa" }],
+    [{ text: "🗺️ Kurs" }, { text: "📋 Testa mig" }],
+    [{ text: "🔥 Streak" }, { text: "💬 Prata franska" }],
+    [{ text: "❓ Hjälp" }]
+  ],
+  resize_keyboard: true,
+  is_persistent: true
+};
+
+/** För Telegrams "/"-meny (setMyCommands). Endast ASCII-namn tillåts av API:t. */
+export const FRENCH_BOT_COMMANDS = [
+  { command: "lektion", description: "📖 Nästa anhalt på resan med Anna" },
+  { command: "kurs", description: "🗺️ Din kurskarta och var du står" },
+  { command: "story", description: "🧳 Din resa hittills" },
+  { command: "avstamning", description: "📋 Läxförhör: behärskar du delen?" },
+  { command: "delprov", description: "📝 Le Grand Test (veckans prov)" },
+  { command: "uttal", description: "🔊 Uttalsdrill för ett ord" },
+  { command: "streak", description: "🔥 Streak och statistik" },
+  { command: "svaga", description: "🎯 Dina svagaste ord" },
+  { command: "franska", description: "💬 Slå på fritt franskt samtal" },
+  { command: "lage", description: "🔁 Växla immersion/studie" },
+  { command: "nystart", description: "🆕 Börja en ny resa" },
+  { command: "hjalp", description: "❓ Visa allt du kan göra" },
+  { command: "sluta", description: "👋 Avsluta franska-läget" }
+];
+
+/** Naturligt språk → kommando (distinkta svenska fraser, inget LLM-anrop). */
+function naturalCommand(text: string): { command: string; arg: string } | null {
+  const t = text.toLowerCase();
+  const has = (...ks: string[]) => ks.some((k) => t.includes(k));
+  if (has("testa mig", "förhör", "forhor", "avstämning", "avstamning", "läxförhör", "laxforhor")) return { command: "/avstämning", arg: "" };
+  if (has("min resa", "visa resan", "berättelse", "berattelse", "reserutt", "var har jag varit")) return { command: "/story", arg: "" };
+  if (has("nästa lektion", "nasta lektion", "ny lektion", "dagens lektion", "fortsätt resan", "fortsatt resan")) return { command: "/lektion", arg: "" };
+  if (/^(jag vill |kan vi |vi (?:går|gar|åker|aker)|ta mig |låt oss |lat oss )/.test(t) && has("gå till", "ga till", "åka till", "aka till", "besöka", "besoka", "sjukhus", "apotek", "café", "cafe", "slott", "museum")) {
+    return { command: "/lektion", arg: text };
+  }
+  if (has("min kurs", "kurskarta", "var är jag i kursen", "hur långt har jag", "hur langt har jag", "kursöversikt", "kursoversikt")) return { command: "/kurs", arg: "" };
+  if (has("delprov", "grand test", "veckans prov", "kör ett prov", "kor ett prov")) return { command: "/delprov", arg: "" };
+  if (has("min streak", "dagar i rad")) return { command: "/streak", arg: "" };
+  if (has("svaga ord", "mina svagheter")) return { command: "/svaga", arg: "" };
+  if (has("vad kan du", "vad kan jag göra", "vad kan jag gora", "vilka kommandon", "meny", "visa hjälp", "visa hjalp")) return { command: "/hjalp", arg: "" };
+  return null;
+}
 
 export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promise<boolean> {
   const text = input.text.trim();
-  const isCommand = text.startsWith("/");
 
-  if (isCommand) {
-    const [cmd, ...rest] = text.split(/\s+/);
-    const command = cmd.toLowerCase();
-    const arg = rest.join(" ").trim();
-
-    if (!FRENCH_COMMANDS.has(command)) {
-      return false; // t.ex. /remember → låt Jarvis ta det
-    }
-
-    switch (command) {
-      case "/franska":
-      case "/français":
-      case "/francais":
-        await updateState({ chatActive: true, activeLessonId: null, activeQuizId: null });
-        await io.send("🇫🇷 *Mode français activé.* Skriv eller prata franska med mig. /sluta för att avsluta, /läge för att växla rättningsläge.", true);
-        return true;
-
-      case "/lektion": {
-        await io.send("Bygger dagens lektion…");
-        const lesson = await buildDailyLesson();
-        await io.send(lesson.text, true);
-        await io.speak?.(lesson.reply);
-        return true;
-      }
-
-      case "/delprov":
-        await startQuiz(io);
-        return true;
-
-      case "/kurs":
-        await io.send(await renderCourseMap(), true);
-        return true;
-
-      case "/story":
-      case "/resa":
-      case "/berättelse":
-      case "/berattelse":
-        await io.send(await renderStory(), true);
-        return true;
-
-      case "/nystart":
-        await resetStory(arg || undefined);
-        await io.send(
-          arg
-            ? `🧳 Ny resa påbörjad med fokus: *${arg}*. Skriv /lektion så börjar äventyret med Anna!`
-            : "🧳 Ny resa påbörjad! Skriv /lektion så börjar äventyret med Anna från början.",
-          true
-        );
-        return true;
-
-      case "/avstämning":
-      case "/avstamning": {
-        const { getCurrentModule } = await import("./curriculum.js");
-        const cur = await getCurrentModule();
-        if (!cur) {
-          await io.send("Inget att stämma av just nu — inga öppna kursdelar. Skriv /kurs för kartan.");
-          return true;
-        }
-        const cp = await buildModuleCheckpoint(cur.module, cur.theme);
-        if (!cp) {
-          await io.send(`Alla ord i ${cur.module} är redan godkända. Skriv /kurs.`);
-          return true;
-        }
-        await io.send(cp.intro, true);
-        await io.send(renderQuestion(cp.payload), true);
-        return true;
-      }
-
-      case "/seed": {
-        await io.send("Seedar läroplanen…");
-        const { items, modules } = await seedCurriculum();
-        await io.send(`✓ Läroplan på plats: ${items} ord i ${modules} moduler. Skriv /kurs för kartan.`);
-        return true;
-      }
-
-      case "/streak":
-        await io.send(await renderStreak(), true);
-        return true;
-
-      case "/svaga":
-        await io.send(await renderWeak(), true);
-        return true;
-
-      case "/uttal":
-        await startPronunciationDrill(arg, io);
-        return true;
-
-      case "/läge":
-      case "/lage":
-        await toggleMode(io);
-        return true;
-
-      case "/avbryt":
-      case "/sluta":
-        await updateState({ chatActive: false, activeLessonId: null, activeQuizId: null });
-        await io.send("Avslutat. À bientôt ! 👋");
-        return true;
-    }
+  // 1. Knapptryckning → kommando (högsta prioritet).
+  if (BUTTON_TO_COMMAND[text]) {
+    const [cmd, ...rest] = BUTTON_TO_COMMAND[text].split(/\s+/);
+    return runFrenchCommand(cmd.toLowerCase(), rest.join(" "), io);
   }
 
-  // Inget kommando — kolla om en fransk session är aktiv.
+  // 2. Slash-kommando.
+  if (text.startsWith("/")) {
+    const [cmd, ...rest] = text.split(/\s+/);
+    const command = cmd.toLowerCase();
+    if (!FRENCH_COMMANDS.has(command)) return false; // t.ex. /remember → Jarvis
+    return runFrenchCommand(command, rest.join(" ").trim(), io);
+  }
+
+  // 3. Naturliga navigeringsfraser fungerar även under en aktiv session.
+  const nat = naturalCommand(text);
+  if (nat) return runFrenchCommand(nat.command, nat.arg, io);
+
+  // 4. Aktiv session äger övriga meddelanden.
   const state = await getState();
 
   if (state.activeQuizId) {
@@ -157,7 +132,6 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
   }
 
   if (state.activeLessonId) {
-    // Svar på dagens lektion: gradera + fortsätt som fri konversation.
     const result = await handleTutorTurn(text, input.channel);
     await setLessonStatus(state.activeLessonId, "graded");
     await bumpStreak();
@@ -174,7 +148,7 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
     return true;
   }
 
-  // Naturligt språk: "nu vill jag öva franska" eller "vad betyder oui".
+  // 5. Idle: öva/fråga-intent.
   const intent = await detectFrenchIntent(text);
   if (intent.action !== "none") {
     if (intent.action === "practice") {
@@ -187,6 +161,124 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
   }
 
   return false;
+}
+
+/** Kör ett franskt kommando. Delas av slash-kommandon, knappar och naturligt språk. */
+async function runFrenchCommand(command: string, arg: string, io: FrenchIO): Promise<boolean> {
+  switch (command) {
+    case "/franska":
+    case "/français":
+    case "/francais":
+      await updateState({ chatActive: true, activeLessonId: null, activeQuizId: null });
+      await io.send("🇫🇷 *Mode français activé.* Skriv eller prata franska med mig. Tryck *Hjälp* eller skriv /sluta när du vill sluta.", true);
+      return true;
+
+    case "/lektion": {
+      await io.send("Bygger dagens lektion…");
+      const lesson = await buildDailyLesson(arg || undefined);
+      await io.send(lesson.text, true);
+      await io.speak?.(lesson.reply);
+      return true;
+    }
+
+    case "/delprov":
+      await startQuiz(io);
+      return true;
+
+    case "/kurs":
+      await io.send(await renderCourseMap(), true);
+      return true;
+
+    case "/story":
+    case "/resa":
+    case "/berättelse":
+    case "/berattelse":
+      await io.send(await renderStory(), true);
+      return true;
+
+    case "/nystart":
+      await resetStory(arg || undefined);
+      await io.send(
+        arg
+          ? `🧳 Ny resa påbörjad med fokus: *${arg}*. Tryck *Lektion* så börjar äventyret med Anna!`
+          : "🧳 Ny resa påbörjad! Tryck *Lektion* så börjar äventyret med Anna från början.",
+        true
+      );
+      return true;
+
+    case "/avstämning":
+    case "/avstamning": {
+      const { getCurrentModule } = await import("./curriculum.js");
+      const cur = await getCurrentModule();
+      if (!cur) {
+        await io.send("Inget att stämma av just nu — inga öppna kursdelar. Tryck *Kurs* för kartan.", true);
+        return true;
+      }
+      const cp = await buildModuleCheckpoint(cur.module, cur.theme);
+      if (!cp) {
+        await io.send(`Alla ord i ${cur.module} är redan godkända. Tryck *Kurs*.`, true);
+        return true;
+      }
+      await io.send(cp.intro, true);
+      await io.send(renderQuestion(cp.payload), true);
+      return true;
+    }
+
+    case "/seed": {
+      await io.send("Seedar läroplanen…");
+      const { items, modules } = await seedCurriculum();
+      await io.send(`✓ Läroplan på plats: ${items} ord i ${modules} moduler. Tryck *Kurs* för kartan.`, true);
+      return true;
+    }
+
+    case "/streak":
+      await io.send(await renderStreak(), true);
+      return true;
+
+    case "/svaga":
+      await io.send(await renderWeak(), true);
+      return true;
+
+    case "/uttal":
+      await startPronunciationDrill(arg, io);
+      return true;
+
+    case "/läge":
+    case "/lage":
+      await toggleMode(io);
+      return true;
+
+    case "/hjälp":
+    case "/hjalp":
+    case "/meny":
+      await io.send(helpText(), true);
+      return true;
+
+    case "/avbryt":
+    case "/sluta":
+      await updateState({ chatActive: false, activeLessonId: null, activeQuizId: null });
+      await io.send("Avslutat. À bientôt ! 👋");
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+function helpText(): string {
+  return [
+    "🇫🇷 *Så funkar det — inga kommandon att minnas:*",
+    "Tryck på knapparna längst ner, välj ur meny-knappen (☰), eller skriv bara naturligt.",
+    "",
+    "📖 *Lektion* — nästa anhalt på resan med Anna",
+    "🧳 *Min resa* — vart du varit och vad som väntar",
+    "🗺️ *Kurs* — din karta och var du står",
+    "📋 *Testa mig* — läxförhör på delen du läser",
+    "🔥 *Streak* — dagar i rad + statistik",
+    "💬 *Prata franska* — fritt samtal",
+    "",
+    'Du kan också bara skriva t.ex. _"nästa lektion"_, _"visa min resa"_, _"testa mig"_ eller _"vad betyder oui"_.'
+  ].join("\n");
 }
 
 // --------------------------------------------------------------------------
@@ -264,20 +356,21 @@ async function renderWeak(): Promise<string> {
 
 async function renderStory(): Promise<string> {
   const story = await getStory();
-  const lines = ["🧳 *Din resa genom Frankrike med Anna*", "", `_${story.premise}_`];
+  const lines = ["🧳 *Ditt liv och din resa i Frankrike*", "", `_${story.premise}_`];
 
   if (story.beats.length === 0) {
-    lines.push("", "Resan har inte börjat än — skriv /lektion så landar du i Frankrike med Anna! 🇫🇷");
+    lines.push("", "Resan har inte börjat än — tryck *Lektion* så landar du på Charles de Gaulle utan någon franska. 🇫🇷");
     return lines.join("\n");
   }
 
-  lines.push("", "*Reserutt hittills:*");
+  lines.push("", "*Senaste scenerna:*");
   for (const b of story.beats.slice(-15)) {
-    lines.push(`📍 Dag ${b.day}: ${b.placeName} (${b.placeKind}) — ${b.recap}`);
+    const kind = b.sceneKind ? ` · ${b.sceneKind}` : "";
+    lines.push(`📍 Scen ${b.day}: ${b.placeName}${kind} — ${b.recap}`);
   }
   if (story.location) lines.push("", `Du är nu: *${story.location}*`);
-  if (story.nextHint) lines.push(`Härnäst: ${story.nextHint}`);
-  lines.push("", "Skriv /lektion för nästa anhalt, eller /nystart [tema] för en ny resa.");
+  if (story.nextHint) lines.push(`Öppen tråd: ${story.nextHint}`);
+  lines.push("", "Tryck *Lektion* för nästa scen, eller skriv vad du vill göra — exempelvis _kan vi gå till ett café?_ ");
   return lines.join("\n");
 }
 

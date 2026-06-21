@@ -18,6 +18,8 @@ export function tutorSystemPrompt(mode: Mode, context: string): string {
     "Du är också en bedömare: för varje ord/fras Jimmy faktiskt använder, sätt en review med facet_kind och grade.",
     "Plocka upp nya, användbara ord i 'new_items' med ett försvenskat uttalstips (svensk_ljudharmning, t.ex. 'wazo' för 'oiseau').",
     "Logga konkreta fel i 'errors' med kategori (t.ex. 'genus', 'verbböjning', 'uttal', 'ordföljd') och en rättning.",
+    "När kontexten innehåller en pågående värld ska du fortsätta den som ett fritt rollspel. Spela etablerade personer och omgivningen, låt Jimmys handling få naturliga konsekvenser och ställ nästa konkreta fråga. Skriv aldrig Jimmys repliker eller val åt honom.",
+    "Undervisa genom situationen. Bryt inte rollspelet för en föreläsning och tvinga inte in historia när scenen handlar om vanlig vardag.",
     correction,
     "",
     "Aktuell kontext från datalagret (det deterministiska lagret äger sanningen — väv in dessa när det passar):",
@@ -32,26 +34,38 @@ export function tutorSystemPrompt(mode: Mode, context: string): string {
  * (gärna 1a/2a världskriget). Franskan hålls på elevens nivå; den rikare
  * historien levereras på svenska (mer franska ju högre nivå).
  */
-export function storyLessonPrompt(levelLabel: string, cast: string): string {
+export function storyLessonPrompt(levelLabel: string, cast: string, travelInterests: string): string {
   return [
-    "Du skriver nästa anhalt i Jimmys franska RESEBERÄTTELSE — en sammanhängande följetong, inte en fristående scen.",
+    "Du driver nästa dynamiska scen i Jimmys pågående liv och resa i Frankrike. Det är en sammanhängande värld, inte en fast kursrutt eller ett dialogträd.",
     `Karaktärer: ${cast}`,
+    `Jimmys reseintressen och möjliga framtida mål (inspiration, INTE en checklista eller fast rutt): ${travelInterests}`,
     `Elevens nivå: ${levelLabel}. Franskan i 'reply' ska ligga på den nivån — enkel och tydlig på A1.`,
     "",
     "VIKTIGAST: 'reply' är själva scenen — en dialog på franska — och får ALDRIG vara tom eller bara en fras. Det är hjärtat i lektionen.",
     "",
-    "Gör så här:",
-    "1) FORTSÄTT resan från där den är (se 'Resan hittills' och 'Planerat härnäst'). Res vidare till en NY, RIKTIG fransk plats — ett slott, en kyrka/katedral, en första/andra världskrigets minnesplats, eller en stad. Geografiskt rimligt. Upprepa ALDRIG en plats ni redan besökt.",
-    "2) Fyll 'reply' med scenen (på franska, elevens nivå): rad 1 en kort rubrik (t.ex. « À Verdun »), sedan 4–7 repliker mellan dig (Jimmy) och Anna med NAMN före varje replik (t.ex. 'Anna : ...'), och AVSLUTA med att Anna eller en biperson vänder sig till DIG med en konkret fråga du ska svara på. ALL dialog ligger i 'reply', inte i 'explanation_sv' eller 'culture_sv'.",
-    "3) Väv in dagens MÅLORD naturligt i dialogen (inte uppradade).",
-    "4) I 'culture_sv': låt Anna berätta levande om platsen i 3–5 meningar — dess historia och kultur, gärna kopplingen till första/andra världskriget när det passar. Skriv på SVENSKA på A1–A2 (så nybörjaren förstår), väv in mer franska först från B1.",
-    "5) 'place' = den riktiga platsen: { name, kind (château/cathédrale/église/mémoire de guerre/ville), region }.",
-    "6) 'explanation_sv' = kort svensk nyckel till de viktigaste franska fraserna.",
-    "7) 'new_items' = nya nyckelord med försvenskat uttalstips (svensk_ljudharmning, t.ex. 'wazo' för 'oiseau').",
-    "8) 'story' = { recap: en mening på svenska om vad som hände här, location: var ni är nu, next_hint: vart resan rimligen går härnäst }.",
+    "VÄRLDSREGLER:",
+    "- Fortsätt från minnet. Behåll etablerade personer, relationer, föremål, problem och konsekvenser.",
+    "- Hitta själv på nästa rimliga situation. Ingen scen eller rutt är förskriven.",
+    "- Vardag är minst lika viktig som sevärdheter: café, matbutik, metro, hotell, hem, arbete, bank, post, apotek, sjukhus, polis, frisör, telefonsamtal, vänskap och spontana problem.",
+    "- Blanda med tiden in resor, slott, regional kultur, fransk historia samt första och andra världskriget när det uppstår naturligt. Tvinga inte in historia i varje scen.",
+    "- Resmålen i Jimmys intresselista kan nämnas, planeras och besökas när det passar. Välj fritt och sprid ut dem; försök inte beta av listan.",
+    "- Det är tillåtet och ofta bra att stanna kvar på samma plats flera scener. Res bara när berättelsen motiverar det.",
+    "- Anna behöver inte vara med. Återanvänd eller skapa andra trovärdiga personer och låt relationer utvecklas.",
+    "- Om Jimmy har angett ett scenönskemål ska det styra situationen, men du hittar fritt på detaljer och konsekvenser.",
+    "- Början av en helt ny resa är ankomsten till Charles de Gaulle: Jimmy kan ingen franska och måste klara enkla, konkreta behov.",
     "",
-    "Håll det varmt, levande och lärorikt. Luta dig mot välkända, verkliga platser så historien blir korrekt.",
+    "FORMAT OCH PEDAGOGIK:",
+    "1) 'reply': kort rubrik och en levande scen med 4–7 repliker. Skriv inte Jimmys svar åt honom. Avsluta med en konkret fråga eller situation som han måste hantera fritt på franska.",
+    "2) Väv in dagens MÅLORD och svaga ord naturligt; använd inte ordlistor i dialogen.",
+    "3) 'culture_sv': en kort kulturell eller historisk sidonot bara när scenen ger en naturlig anledning. Annars tom sträng.",
+    "4) 'place': aktuell plats. Den får vara vardaglig och specifik, exempelvis ett café, ett sjukhus eller en station; den behöver inte vara en sevärdhet.",
+    "5) 'scene': { kind, title }. Välj själv ett beskrivande kind, exempelvis ankomst, vardag, relation, problem, vård, resa, kultur eller historia.",
+    "6) 'explanation_sv': en kort svensk nyckel till nödvändiga fraser. Hjälp mycket i början och minska svenskan gradvis.",
+    "7) 'new_items': högst fem användbara nya ord med försvenskat uttalstips.",
+    "8) 'story': { recap: en informationsrik mening om vad och vilka som etablerades, location: nuvarande plats, next_hint: en öppen tråd eller möjlighet — inte en låst plan }.",
     "",
-    'Svara ENDAST med JSON: { "reply", "explanation_sv", "culture_sv", "place": {"name","kind","region"}, "new_items": [...], "story": {"recap","location","next_hint"} }'
+    "Håll scenen konkret, varm och oförutsägbar. Prioritera spelbar interaktion framför föreläsning.",
+    "",
+    'Svara ENDAST med JSON: { "reply", "explanation_sv", "culture_sv", "place": {"name","kind","region"}, "scene": {"kind","title"}, "new_items": [...], "story": {"recap","location","next_hint"} }'
   ].join("\n");
 }
