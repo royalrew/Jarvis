@@ -7,6 +7,7 @@ test("första scenen har minimal aktiv belastning", () => {
   assert.equal(policy.targetWords, 2);
   assert.equal(policy.leechWords, 0);
   assert.equal(policy.maxNewItems, 1);
+  assert.equal(policy.sentenceStarters, 3);
 });
 
 test("ordbudgeten växer kontrollerat med nivån", () => {
@@ -16,6 +17,8 @@ test("ordbudgeten växer kontrollerat med nivån", () => {
   assert.ok(a1.targetWords < b1.targetWords);
   assert.ok(b1.targetWords < c2.targetWords);
   assert.ok(a1.targetWords + a1.leechWords + a1.maxNewItems <= 6);
+  assert.ok(a1.sentenceStarters > b1.sentenceStarters);
+  assert.equal(c2.sentenceStarters, 0);
 });
 
 test("okänd nivå faller säkert tillbaka till A1", () => {

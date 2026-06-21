@@ -175,12 +175,20 @@ export interface StoryPlace {
   region: string;
 }
 
+export interface ResponseSupport {
+  instruction_sv: string;
+  sentence_starters: string[];
+  word_bank: string[];
+  rescue_sv: string;
+}
+
 export interface StoryLesson {
   setting_sv: string;
   reply: string; // scenen på franska (elevens nivå)
   explanation_sv?: string;
   culture_sv: string; // Annas kultur-/historieberättelse
   mission_sv: string;
+  response_support: ResponseSupport;
   place: StoryPlace;
   scene: { kind: string; title: string };
   new_items: TutorNewItem[];
@@ -197,6 +205,7 @@ export interface StoryLessonInput {
   targetWords: string[];
   leechWords: string[];
   maxNewItems: number;
+  sentenceStarters: number;
 }
 
 /**
@@ -220,6 +229,7 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     input.targetWords.length ? `Dagens målord att väva in: ${input.targetWords.join(", ")}` : "",
     input.leechWords.length ? `Få också med dessa svaga ord: ${input.leechWords.join(", ")}` : "",
     `Du får introducera högst ${input.maxNewItems} helt nya aktiva ord utöver målord och svaga ord. Övriga miljöord är passiv exponering och ska inte läggas i new_items.`,
+    `Svarsstödet ska innehålla exakt ${input.sentenceStarters} nivåanpassade meningsstarter och bara ord/fraser som redan förekommer i scenen, språknyckeln eller målordlistan.`,
     `Detta är dag ${input.day + 1} på resan.`
   ].filter(Boolean).join("\n");
 
@@ -243,20 +253,46 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
   }
 
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return normalizeStoryLesson(JSON.parse(data.choices?.[0]?.message?.content || "{}"), input.maxNewItems);
+  return normalizeStoryLesson(
+    JSON.parse(data.choices?.[0]?.message?.content || "{}"),
+    input.maxNewItems,
+    input.sentenceStarters,
+    [...input.targetWords, ...input.leechWords]
+  );
 }
 
-function normalizeStoryLesson(obj: unknown, maxNewItems: number): StoryLesson {
+function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, activeWords: string[]): StoryLesson {
   const o = (obj ?? {}) as Record<string, unknown>;
   const place = (o.place ?? {}) as Record<string, unknown>;
   const scene = (o.scene ?? {}) as Record<string, unknown>;
   const story = (o.story ?? {}) as Record<string, unknown>;
+  const support = (o.response_support ?? {}) as Record<string, unknown>;
+  const strings = (value: unknown, max: number) => Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim()).slice(0, max)
+    : [];
+  const generatedStarters = strings(support.sentence_starters, maxSentenceStarters);
+  const fallbackStarters = ["Je voudrais ___, s’il vous plaît.", "Je suis ___", "Est-ce que je peux ___ ?"];
+  const generatedWordBank = strings(support.word_bank, 6);
   return {
     setting_sv: typeof o.setting_sv === "string" ? o.setting_sv.trim() : "",
     reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue le voyage ?",
     explanation_sv: typeof o.explanation_sv === "string" && o.explanation_sv.trim() ? o.explanation_sv.trim() : undefined,
     culture_sv: typeof o.culture_sv === "string" ? o.culture_sv.trim() : "",
     mission_sv: typeof o.mission_sv === "string" && o.mission_sv.trim() ? o.mission_sv.trim() : "Svara på franska och se vad som händer.",
+    response_support: {
+      instruction_sv: typeof support.instruction_sv === "string" && support.instruction_sv.trim()
+        ? support.instruction_sv.trim()
+        : "Svara med en kort mening på franska.",
+      sentence_starters: generatedStarters.length
+        ? generatedStarters
+        : fallbackStarters.slice(0, maxSentenceStarters),
+      word_bank: generatedWordBank.length
+        ? generatedWordBank
+        : activeWords.slice(0, 6),
+      rescue_sv: typeof support.rescue_sv === "string" && support.rescue_sv.trim()
+        ? support.rescue_sv.trim()
+        : "Fastnar du kan du skriva på svenska vad du vill säga, så hjälper tutorn dig att uttrycka det på franska."
+    },
     place: {
       name: typeof place.name === "string" && place.name.trim() ? place.name.trim() : "Frankrike",
       kind: typeof place.kind === "string" ? place.kind.trim() : "plats",
@@ -282,6 +318,12 @@ function mockStoryLesson(input: StoryLessonInput): StoryLesson {
     explanation_sv: "(mock-läge — ingen OPENAI_API_KEY) Anna hälsar dig välkommen till Paris.",
     culture_sv: "Mock-läge: här skulle Anna berätta om platsen och dess historia.",
     mission_sv: "Hälsa och berätta kort hur du mår på franska.",
+    response_support: {
+      instruction_sv: "Svara med en kort mening på franska.",
+      sentence_starters: ["Bonjour, je…", "Je suis…", "Ça va…"].slice(0, input.sentenceStarters),
+      word_bank: input.targetWords,
+      rescue_sv: "Fastnar du kan du skriva på svenska, så hjälper tutorn dig vidare på franska."
+    },
     place: { name: "Paris", kind: "ville", region: "Île-de-France" },
     scene: { kind: "ankomst", title: "Första dagen i Frankrike" },
     new_items: [],

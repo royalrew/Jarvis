@@ -24,6 +24,8 @@ export function tutorSystemPrompt(mode: Mode, context: string): string {
     "Anpassa stödet efter Jimmys senaste prestation: vid osäkerhet, förenkla franskan och ge en kort svensk ledtråd; vid säkra svar, minska svenskan och höj komplexiteten försiktigt.",
     "Under en aktiv scen: kontrollera ibland förståelsen genom en naturlig följdfråga eller handling, inte genom att lämna rollspelet och annonsera ett test.",
     "I ÅTERKALLNINGSFASEN: låt Jimmy kort återberätta eller använda målord utan att du skriver svaret åt honom. Rätta vänligt, bekräfta det som satt och avsluta sedan scenen med scene_complete=true och story_update.",
+    "Om Jimmy svarar huvudsakligen på svenska i en aktiv scen använder han nödhjälpen. Behandla det inte som ett misslyckande: sätt inga negativa reviews/errors, ge i explanation_sv en eller två korta franska formuleringar för exakt det han försökte säga och be honom prova en av dem. För inte scenen framåt och sätt scene_complete=false.",
+    "När Jimmy klarar sig med meningsstarterna, minska stödet gradvis i nästa tur. Hjälpen ska vara en ramp, inte ett permanent facit.",
     correction,
     "",
     "Aktuell kontext från datalagret (det deterministiska lagret äger sanningen — väv in dessa när det passar):",
@@ -70,13 +72,15 @@ export function storyLessonPrompt(levelLabel: string, cast: string, travelIntere
     "4) 'explanation_sv': en pedagogisk språknyckel med betydelser, användbara fraser och precis den grammatik som behövs i scenen. Anpassa mängden efter nivån.",
     "5) 'culture_sv': 2–5 stycken kultur eller historia när scenen ger en naturlig anledning. Annars tom sträng. Det får vara berättande och intressant, inte ett torrt faktablock.",
     "6) 'mission_sv': ett tydligt men öppet uppdrag. Berätta vad situationen kräver, inte exakt vad Jimmy ska säga.",
-    "7) 'place': aktuell plats. Den får vara vardaglig och specifik, exempelvis ett café, ett sjukhus eller en station; den behöver inte vara en sevärdhet.",
-    "8) 'scene': { kind, title }. Välj själv ett beskrivande kind, exempelvis ankomst, vardag, relation, problem, vård, resa, kultur eller historia.",
-    `9) 'new_items': högst ${pedagogy.maxNewItems} användbara nya AKTIVA ord med försvenskat uttalstips. Andra begripliga miljöord får förekomma passivt men ska inte registreras.`,
-    "10) 'story': { recap: en informationsrik mening om vad och vilka som etablerades, location: nuvarande plats, next_hint: en öppen tråd eller möjlighet — inte en låst plan }.",
+    `7) 'response_support': bygg en direkt bro från språknyckeln till Jimmys svar. instruction_sv säger kort att han ska svara på franska. sentence_starters innehåller exakt ${pedagogy.sentenceStarters} ofullständiga franska meningsstarter med … eller ___, aldrig färdiga facitsvar. word_bank innehåller 3–6 relevanta ord/fraser MED svensk betydelse och endast sådant som redan lärts ut i scenen eller språknyckeln. rescue_sv säger att svenska är tillåtet om han fastnar och att tutorn då hjälper honom tillbaka till franska.`,
+    "8) Meningsstarterna och ordmenyn måste passa exakt till mission_sv. Eleven ska kunna konstruera ett rimligt eget svar genom att kombinera dem, utan att facit skrivs åt honom.",
+    "9) 'place': aktuell plats. Den får vara vardaglig och specifik, exempelvis ett café, ett sjukhus eller en station; den behöver inte vara en sevärdhet.",
+    "10) 'scene': { kind, title }. Välj själv ett beskrivande kind, exempelvis ankomst, vardag, relation, problem, vård, resa, kultur eller historia.",
+    `11) 'new_items': högst ${pedagogy.maxNewItems} användbara nya AKTIVA ord med försvenskat uttalstips. Andra begripliga miljöord får förekomma passivt men ska inte registreras.`,
+    "12) 'story': { recap: en informationsrik mening om vad och vilka som etablerades, location: nuvarande plats, next_hint: en öppen tråd eller möjlighet — inte en låst plan }.",
     "",
     "Håll scenen konkret, varm och oförutsägbar. Prioritera spelbar interaktion, personlighet och naturligt flyt framför föreläsning.",
     "",
-    'Svara ENDAST med JSON: { "setting_sv", "reply", "explanation_sv", "culture_sv", "mission_sv", "place": {"name","kind","region"}, "scene": {"kind","title"}, "new_items": [...], "story": {"recap","location","next_hint"} }'
+    'Svara ENDAST med JSON: { "setting_sv", "reply", "explanation_sv", "culture_sv", "mission_sv", "response_support": {"instruction_sv","sentence_starters":[],"word_bank":[],"rescue_sv"}, "place": {"name","kind","region"}, "scene": {"kind","title"}, "new_items": [...], "story": {"recap","location","next_hint"} }'
   ].join("\n");
 }

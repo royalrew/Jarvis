@@ -73,7 +73,8 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     day: story.day,
     targetWords,
     leechWords,
-    maxNewItems: policy.maxNewItems
+    maxNewItems: policy.maxNewItems,
+    sentenceStarters: policy.sentenceStarters
   });
 
   // Spara nya ord lektionen introducerar (inga reviews än).
@@ -117,7 +118,20 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
   ];
   if (lesson.explanation_sv) messages.push(`🗝️ *Språknyckel*\n\n${lesson.explanation_sv}`);
   if (lesson.culture_sv) messages.push(`🏛️ *Kultur och historia*\n\n${lesson.culture_sv}`);
-  messages.push(`🎭 *Din tur*\n\n${lesson.mission_sv}`);
+  const support = lesson.response_support;
+  const responseParts = [
+    "🎭 *Din tur*",
+    lesson.mission_sv,
+    `🇫🇷 *Svara på franska.* ${support.instruction_sv}`
+  ];
+  if (support.sentence_starters.length) {
+    responseParts.push(`*Börja så här om du vill:*\n${support.sentence_starters.map((starter) => `• ${starter}`).join("\n")}`);
+  }
+  if (support.word_bank.length) {
+    responseParts.push(`*Ord och fraser från lektionen:*\n${support.word_bank.map((word) => `• ${word}`).join("\n")}`);
+  }
+  responseParts.push(`🛟 ${support.rescue_sv}`);
+  messages.push(responseParts.join("\n\n"));
 
   return {
     lessonId,

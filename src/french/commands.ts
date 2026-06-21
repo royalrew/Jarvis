@@ -12,7 +12,7 @@ import {
   setLessonPayload,
   type Channel
 } from "./db.js";
-import { handleTutorTurn, formatTurn } from "./tutor.js";
+import { handleTutorTurn, formatTurn, resetHistory } from "./tutor.js";
 import { detectFrenchIntent } from "./llm.js";
 import { renderCourseMap, seedCurriculum } from "./curriculum.js";
 import { finalizeScene, getStory, resetStory } from "./story.js";
@@ -234,6 +234,8 @@ async function runFrenchCommand(command: string, arg: string, io: FrenchIO): Pro
 
     case "/nystart":
       await resetStory(arg || undefined);
+      resetHistory();
+      await updateState({ chatActive: false, activeLessonId: null, activeQuizId: null, lastScenario: null });
       await io.send(
         arg
           ? `🧳 Ny resa påbörjad med fokus: *${arg}*. Tryck *Lektion* så börjar äventyret med Anna!`
