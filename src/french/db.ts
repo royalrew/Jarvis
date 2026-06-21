@@ -58,6 +58,7 @@ export interface FrenchState {
   activeQuizId: string | null;
   streak: number;
   lastLessonDate: string | null;
+  lastScenario: string | null;
 }
 
 export interface FrenchError {
@@ -162,6 +163,7 @@ export async function initFrenchDb() {
     )
   `;
 
+  await sql`ALTER TABLE fr_state ADD COLUMN IF NOT EXISTS last_scenario TEXT`;
   await sql`INSERT INTO fr_state (id) VALUES (1) ON CONFLICT (id) DO NOTHING`;
 }
 
@@ -455,7 +457,8 @@ export async function getState(): Promise<FrenchState> {
     activeLessonId: (r.active_lesson_id as string) ?? null,
     activeQuizId: (r.active_quiz_id as string) ?? null,
     streak: (r.streak as number) ?? 0,
-    lastLessonDate: r.last_lesson_date ? String(r.last_lesson_date).slice(0, 10) : null
+    lastLessonDate: r.last_lesson_date ? String(r.last_lesson_date).slice(0, 10) : null,
+    lastScenario: (r.last_scenario as string) ?? null
   };
 }
 
@@ -466,6 +469,7 @@ export async function updateState(patch: Partial<{
   activeQuizId: string | null;
   streak: number;
   lastLessonDate: string | null;
+  lastScenario: string | null;
 }>) {
   const sql = getSql();
   // Bygg en dynamisk uppdatering — bara fält som finns i patch rörs.
@@ -476,6 +480,7 @@ export async function updateState(patch: Partial<{
   if (patch.activeQuizId !== undefined) sets.push(sql`active_quiz_id = ${patch.activeQuizId}`);
   if (patch.streak !== undefined) sets.push(sql`streak = ${patch.streak}`);
   if (patch.lastLessonDate !== undefined) sets.push(sql`last_lesson_date = ${patch.lastLessonDate}`);
+  if (patch.lastScenario !== undefined) sets.push(sql`last_scenario = ${patch.lastScenario}`);
   if (sets.length === 0) return;
 
   let assignment = sets[0];

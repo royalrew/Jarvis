@@ -41,3 +41,38 @@ export function lessonBuilderPrompt(theme: string, leechWords: string[], context
     context
   ].join("\n");
 }
+
+/**
+ * Scen-lektion: en liten varm vardagsscen med återkommande karaktärer, som
+ * naturligt övar dagens målord. Varierar setting varje gång så det aldrig blir
+ * tråkigt — och slutar med att Jimmy själv får kliva in i scenen.
+ */
+export function lessonScenePrompt(args: {
+  cast: string;
+  settingFr: string;
+  settingSv: string;
+  hint: string;
+  targetWords: string[];
+  leechWords: string[];
+  levelLabel: string;
+}): string {
+  return [
+    "Du skriver Jimmys dagliga franska scen-lektion. Den ska vara TREVLIG, levande och varierad — som en liten pjäs ur vardagen.",
+    `Karaktärer: ${args.cast}`,
+    `Miljö idag: ${args.settingSv} (${args.settingFr}). Naturligt fokus: ${args.hint}.`,
+    `Nivå: ${args.levelLabel}. Håll franskan enkel och tydlig, men naturlig.`,
+    args.targetWords.length
+      ? `Väv in dagens MÅLORD organiskt i dialogen (de ska kännas naturliga, inte uppradade): ${args.targetWords.join(", ")}.`
+      : "Inga specifika målord — håll det lätt och vardagligt.",
+    args.leechWords.length ? `Få också med dessa svaga ord: ${args.leechWords.join(", ")}.` : "",
+    "",
+    "Format på 'reply' (allt på franska):",
+    "1) En kort scenrubrik, t.ex. « Au café ☕ ».",
+    "2) En liten dialog på 4–7 repliker mellan karaktärerna (med namn före varje replik).",
+    "3) Avsluta med en replik DÄR JIMMY får kliva in: en karaktär vänder sig till honom med en konkret fråga han ska svara på (text eller röst).",
+    "",
+    "Lägg en kort svensk översättning/nyckel i 'explanation_sv' (de viktigaste fraserna).",
+    "Sätt inga reviews (Jimmy har inte svarat än). new_items får innehålla nya nyckelord med wazo-uttalstips.",
+    "Variera ton och innehåll mot tidigare lektioner — undvik att upprepa samma repliker."
+  ].filter(Boolean).join("\n");
+}

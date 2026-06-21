@@ -4,6 +4,8 @@ import {
   getLeechFacets,
   getNearMasteryGaps,
   getDueFacets,
+  getModuleItems,
+  getState,
   pinLeech,
   updateState,
   type Channel,
@@ -12,7 +14,8 @@ import {
 import { MASTERY_STABILITY, allowedKinds } from "./fsrs.js";
 import { applyTurn } from "./tutor.js";
 import { callTutorTurn } from "./llm.js";
-import { lessonBuilderPrompt } from "./prompts.js";
+import { lessonScenePrompt } from "./prompts.js";
+import { pickScene, CAST } from "./scenarios.js";
 import { todayStockholm } from "./time.js";
 
 /**
@@ -29,41 +32,65 @@ export interface BuiltLesson {
 }
 
 /**
- * Bygger dagens lektion (vardagar). Tema ur veckans vanligaste fel, plus 1–2
- * pinnade leeches som tvingas in i ett sammanhängande morgonmeddelande.
+ * Bygger dagens lektion som en trevlig, varierad vardagsscen med återkommande
+ * karaktärer (Anna & Simone m.fl.). Målorden hämtas ur den modul du står på i
+ * kursen (det läraren vill att du ska behärska), kryddat med dagens leeches.
  */
 export async function buildDailyLesson(): Promise<BuiltLesson> {
   const date = todayStockholm();
-  const topErrors = await getTopErrorCategories(7, 3);
+  const state = await getState();
   const leeches = await getLeechFacets(2);
 
-  const theme = topErrors.length
-    ? `repetera ${topErrors.map((e) => e.category).join(" & ")}`
-    : "vardagsfranska – en lätt start på dagen";
+  // Dagens målord = de ord du ännu inte behärskar i din aktuella kursdel.
+  const { getCurrentModule } = await import("./curriculum.js");
+  const current = await getCurrentModule();
+  let targetWords: string[] = [];
+  let levelLabel = "nybörjare";
+  if (current) {
+    const items = await getModuleItems(current.module);
+    targetWords = items.filter((it) => !it.mastered).slice(0, 6).map((it) => `${it.lemma} (${it.meta.translation})`);
+    levelLabel = `${current.module.split(".")[0]} – ${current.theme}`;
+  } else {
+    // Ingen aktiv kursdel: falla tillbaka på förfallna ord.
+    const due = await getDueFacets(6);
+    targetWords = due.map((f) => `${f.lemma} (${f.meta.translation})`);
+  }
 
   // Pinna de leeches vi väver in, så de räknas som dagens fokus.
   for (const l of leeches) await pinLeech(l.id, true);
   const leechWords = leeches.map((l) => l.lemma);
 
-  const due = await getDueFacets(6);
-  const context = [
-    topErrors.length ? "Veckans vanligaste fel: " + topErrors.map((e) => `${e.category} (${e.count})`).join(", ") : "",
-    due.length ? "Förfallna ord: " + due.map((f) => `${f.lemma}=${f.meta.translation}`).join(", ") : ""
-  ].filter(Boolean).join("\n");
+  // Välj en scen – varierad mot förra gången.
+  const scene = pickScene(state.lastScenario);
+  const theme = `${scene.setting_fr}`;
 
   const turn = await callTutorTurn(
-    lessonBuilderPrompt(theme, leechWords, context),
-    [{ role: "user", content: "Bygg dagens lektion." }],
+    lessonScenePrompt({
+      cast: CAST,
+      settingFr: scene.setting_fr,
+      settingSv: scene.setting_sv,
+      hint: scene.hint,
+      targetWords,
+      leechWords,
+      levelLabel
+    }),
+    [{ role: "user", content: "Bygg dagens scen-lektion." }],
     "text"
   );
 
   // Spara eventuella nya ord lektionen introducerar (men inga reviews än).
   await applyTurn({ ...turn, reviews: [] }, "text");
 
-  const facetIds = [...leeches.map((l) => l.id), ...due.map((d) => d.id)];
-  const lessonId = await createLesson("daily", date, theme, facetIds, { kind: "daily" });
+  const facetIds = leeches.map((l) => l.id);
+  const lessonId = await createLesson("daily", date, theme, facetIds, { kind: "daily", scene: scene.id });
 
-  await updateState({ activeLessonId: lessonId, activeQuizId: null, chatActive: false, lastLessonDate: date });
+  await updateState({
+    activeLessonId: lessonId,
+    activeQuizId: null,
+    chatActive: false,
+    lastLessonDate: date,
+    lastScenario: scene.id
+  });
 
   const text = [turn.reply, turn.explanation_sv ? `\n🇸🇪 ${turn.explanation_sv}` : ""].filter(Boolean).join("\n");
   return { lessonId, text, reply: turn.reply, theme };
