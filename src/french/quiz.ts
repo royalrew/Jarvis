@@ -4,10 +4,11 @@ import {
   setLessonStatus,
   recordQuizResult,
   getMasteredLemmas,
+  setItemMastered,
   updateState,
   type Channel
 } from "./db.js";
-import { gradeFacet, MASTERY_STABILITY } from "./fsrs.js";
+import { gradeFacet } from "./fsrs.js";
 import { judgeQuizAnswer } from "./llm.js";
 import { renderQuestion, type QuizPayload } from "./lessons.js";
 
@@ -71,11 +72,15 @@ async function finishQuiz(quizId: string, payload: QuizPayload): Promise<QuizSte
   await setLessonStatus(quizId, "graded");
   await updateState({ activeQuizId: null });
 
+  if (payload.kind === "checkpoint") {
+    return finishCheckpoint(quizId, payload);
+  }
+
   const { advanceCurriculum } = await import("./curriculum.js");
   await advanceCurriculum();
 
   const quizLemmas = [...new Set(payload.questions.map((q) => q.lemma))];
-  const masteredAll = await getMasteredLemmas(MASTERY_STABILITY);
+  const masteredAll = await getMasteredLemmas();
   const newlyMastered = masteredAll.filter((l) => quizLemmas.includes(l));
 
   await recordQuizResult(quizId, payload.score, payload.questions.length, newlyMastered);
@@ -85,10 +90,65 @@ async function finishQuiz(quizId: string, payload: QuizPayload): Promise<QuizSte
     `Poäng: *${payload.score}/${payload.questions.length}*`
   ];
   if (newlyMastered.length) {
-    lines.push("", `🎉 Fullt behärskade (både stavning + uttal): ${newlyMastered.join(", ")}`);
+    lines.push("", `🎉 Behärskade ord: ${newlyMastered.join(", ")}`);
   } else {
     lines.push("", "Inga nya ord nådde full mastery den här gången — fortsätt nöta uttal + stavning.");
   }
   lines.push("", "À dimanche prochain ! 🇫🇷");
+  return { reply: lines.join("\n"), done: true };
+}
+
+/**
+ * Lärarens dom efter en avstämning: ett ord får JA bara om BÅDE stavning och
+ * uttal satt (grade >= 3). Alla ord JA → modulen godkänd → nästa låses upp.
+ */
+async function finishCheckpoint(quizId: string, payload: QuizPayload): Promise<QuizStep> {
+  // Samla betyg per ord och kanal.
+  const byLemma = new Map<string, { prod?: number; pron?: number }>();
+  for (const q of payload.questions) {
+    const entry = byLemma.get(q.lemma) ?? {};
+    if (q.kind === "production") entry.prod = q.grade ?? 0;
+    if (q.kind === "pronunciation") entry.pron = q.grade ?? 0;
+    byLemma.set(q.lemma, entry);
+  }
+
+  const passed: string[] = [];
+  const failed: { lemma: string; missing: string }[] = [];
+  for (const [lemma, g] of byLemma) {
+    const spellingOk = (g.prod ?? 0) >= 3;
+    const soundOk = (g.pron ?? 0) >= 3;
+    if (spellingOk && soundOk) {
+      await setItemMastered(lemma, true);
+      passed.push(lemma);
+    } else {
+      const missing = !spellingOk && !soundOk ? "stavning + uttal" : !spellingOk ? "stavning" : "uttal";
+      failed.push({ lemma, missing });
+    }
+  }
+
+  const { advanceCurriculum } = await import("./curriculum.js");
+  const unlocked = await advanceCurriculum();
+  await recordQuizResult(quizId, passed.length, byLemma.size, passed);
+
+  const moduleOk = failed.length === 0;
+  const lines: string[] = [
+    moduleOk ? `✅ *Godkänt!* ${payload.moduleId} sitter.` : `📋 *Avstämning ${payload.moduleId} klar*`
+  ];
+  lines.push("", `Läraren säger JA på ${passed.length}/${byLemma.size} ord.`);
+
+  if (passed.length) lines.push("", `✅ Behärskade: ${passed.join(", ")}`);
+  if (failed.length) {
+    lines.push("", "🔄 Behöver mer (läraren säger NEJ än):");
+    for (const f of failed) lines.push(`• ${f.lemma} — ${f.missing}`);
+  }
+
+  if (moduleOk && unlocked.length) {
+    lines.push("", `🔓 Nästa del upplåst: ${unlocked.join(", ")}. På vi! 🇫🇷`);
+  } else if (moduleOk) {
+    lines.push("", "Hela delen sitter. 🎉");
+  } else {
+    lines.push("", "Nöt vidare på orden ovan, kör /avstämning igen när du är redo.");
+  }
+
   return { reply: lines.join("\n"), done: true };
 }

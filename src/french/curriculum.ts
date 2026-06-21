@@ -1,6 +1,5 @@
 import { getSql } from "../db.js";
-import { upsertItemWithFacets, type ItemType } from "./db.js";
-import { MASTERY_STABILITY } from "./fsrs.js";
+import { upsertItemWithFacets, getModuleItems, type ItemType } from "./db.js";
 
 /**
  * CEFR-ryggraden (A1→C2) + handplockat A1-innehåll.
@@ -41,10 +40,8 @@ export interface CurriculumLevel {
   modules: CurriculumModule[];
 }
 
-/** Tröskel: meaning-stabilitet (dagar) då ett ord räknas som "inlärt" för upplåsning. */
+/** Tröskel: meaning-stabilitet (dagar) då ett ord räknas som "på gång" (introducerat). */
 const LEARN_THRESHOLD = 4;
-/** Andel av en moduls ord som måste vara inlärda för att nästa modul ska tändas. */
-const READINESS = 0.7;
 
 export const CURRICULUM: CurriculumLevel[] = [
   {
@@ -292,19 +289,17 @@ async function getModuleStats(): Promise<ModuleStat[]> {
   const sql = getSql();
   const rows = await sql`
     WITH per_item AS (
-      SELECT i.id, i.module, MIN(i.seq) AS seq, BOOL_OR(i.unlocked) AS unlocked,
-        MAX(CASE WHEN f.kind = 'meaning'       THEN f.stability END) AS mean_s,
-        MAX(CASE WHEN f.kind = 'production'    THEN f.stability END) AS prod_s,
-        MAX(CASE WHEN f.kind = 'pronunciation' THEN f.stability END) AS pron_s
+      SELECT i.id, i.module, i.seq, i.unlocked, i.mastered,
+        MAX(CASE WHEN f.kind = 'meaning' THEN f.stability END) AS mean_s
       FROM fr_items i JOIN fr_facets f ON f.item_id = i.id
       WHERE i.module IS NOT NULL
-      GROUP BY i.id, i.module
+      GROUP BY i.id, i.module, i.seq, i.unlocked, i.mastered
     )
     SELECT module,
       MIN(seq) AS seq,
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE COALESCE(mean_s,0) >= ${LEARN_THRESHOLD})::int AS learned,
-      COUNT(*) FILTER (WHERE COALESCE(prod_s,0) >= ${MASTERY_STABILITY} AND COALESCE(pron_s,0) >= ${MASTERY_STABILITY})::int AS mastered,
+      COUNT(*) FILTER (WHERE mastered)::int AS mastered,
       BOOL_OR(unlocked) AS unlocked
     FROM per_item
     GROUP BY module
@@ -321,9 +316,9 @@ async function getModuleStats(): Promise<ModuleStat[]> {
 }
 
 /**
- * Tänder första modulen + varje modul vars föregångare är "inlärd"
- * (>= READINESS andel av orden över LEARN_THRESHOLD). Stannar vid första
- * icke-redo modulen — hoppar aldrig över. Idempotent.
+ * Tänder första modulen + varje modul vars föregångare läraren godkänt
+ * (ALLA ord behärskade — mastered). Stannar vid första icke-godkända modulen
+ * — hoppar aldrig över. Idempotent.
  */
 export async function advanceCurriculum(): Promise<string[]> {
   const sql = getSql();
@@ -331,18 +326,30 @@ export async function advanceCurriculum(): Promise<string[]> {
   if (stats.length === 0) return [];
 
   const toUnlock: string[] = [];
-  let prevReady = true; // första modulen ska alltid vara öppen
+  let prevPassed = true; // första modulen ska alltid vara öppen
 
   for (const mod of stats) {
-    if (prevReady && !mod.unlocked) toUnlock.push(mod.module);
-    const ready = mod.total > 0 && mod.learned / mod.total >= READINESS;
-    prevReady = (mod.unlocked || prevReady) && ready;
+    if (prevPassed && !mod.unlocked) toUnlock.push(mod.module);
+    const passed = mod.total > 0 && mod.mastered === mod.total;
+    prevPassed = (mod.unlocked || prevPassed) && passed;
   }
 
   for (const module of toUnlock) {
     await sql`UPDATE fr_items SET unlocked = true WHERE module = ${module}`;
   }
   return toUnlock;
+}
+
+/** Lägsta upplåsta modul som ännu inte är helt godkänd (lärarens "nuvarande del"). */
+export async function getCurrentModule(): Promise<{ module: string; theme: string } | null> {
+  const stats = await getModuleStats();
+  const current = stats.find((m) => m.unlocked && m.mastered < m.total);
+  if (!current) return null;
+  for (const level of CURRICULUM) {
+    const mod = level.modules.find((m) => m.id === current.module);
+    if (mod) return { module: mod.id, theme: mod.theme };
+  }
+  return { module: current.module, theme: "" };
 }
 
 // --------------------------------------------------------------------------
@@ -352,6 +359,7 @@ export async function advanceCurriculum(): Promise<string[]> {
 export async function renderCourseMap(): Promise<string> {
   const stats = await getModuleStats();
   const statByModule = new Map(stats.map((s) => [s.module, s]));
+  const current = await getCurrentModule();
 
   const lines: string[] = ["🇫🇷 *Din franska resa — 0 → master*", ""];
 
@@ -362,7 +370,7 @@ export async function renderCourseMap(): Promise<string> {
     const mastered = levelModules.reduce((s, m) => s + m.mastered, 0);
     const anyUnlocked = levelModules.some((m) => m.unlocked);
 
-    const badge = !hasContent ? "🔒 (karta)" : anyUnlocked ? "▶️" : "🔒";
+    const badge = !hasContent ? "🗺️" : anyUnlocked ? "▶️" : "🔒";
     const prog = hasContent ? ` — ${mastered}/${total} behärskade` : "";
     lines.push(`${badge} *${level.id} · ${level.title}* (${level.hours})${prog}`);
 
@@ -370,17 +378,28 @@ export async function renderCourseMap(): Promise<string> {
       for (const m of level.modules) {
         const st = statByModule.get(m.id);
         if (!st) continue;
-        const mark = !st.unlocked ? "🔒" : st.learned >= st.total ? "✅" : "•";
-        if (st.unlocked || mark === "🔒") {
-          lines.push(`   ${mark} ${m.id} ${m.theme} — ${st.learned}/${st.total} inlärda`);
-        }
+        const done = st.mastered === st.total;
+        const mark = !st.unlocked ? "🔒" : done ? "✅" : "▶️";
+        lines.push(`   ${mark} ${m.id} ${m.theme} — ${st.mastered}/${st.total} JA`);
       }
-    } else {
+    } else if (!hasContent) {
       lines.push(`   _${level.focus}_`);
     }
     lines.push("");
   }
 
-  lines.push("Skriv /lektion för att öva det som är upplåst, eller prata bara franska med mig.");
+  // Per-ord-status för den del du står på just nu (lärarens fokus).
+  if (current) {
+    const items = await getModuleItems(current.module);
+    lines.push(`📍 *Nu: ${current.module} ${current.theme}* — behärskar du orden?`);
+    for (const it of items) {
+      const mark = it.mastered ? "✅ JA" : "⬜ inte än";
+      lines.push(`   ${mark} · ${it.lemma} = ${it.meta.translation}`);
+    }
+    lines.push("", "Redo? Skriv /avstämning så prövar läraren dig (stavning + uttal).");
+  } else {
+    lines.push("Skriv /lektion för att öva, eller prata bara franska med mig.");
+  }
+
   return lines.join("\n").trim();
 }

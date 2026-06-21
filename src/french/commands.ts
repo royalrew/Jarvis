@@ -13,7 +13,7 @@ import {
 import { handleTutorTurn, formatTurn } from "./tutor.js";
 import { detectFrenchIntent } from "./llm.js";
 import { renderCourseMap, seedCurriculum } from "./curriculum.js";
-import { buildDailyLesson, buildGrandTest, renderQuestion, type QuizPayload } from "./lessons.js";
+import { buildDailyLesson, buildGrandTest, buildModuleCheckpoint, renderQuestion, type QuizPayload } from "./lessons.js";
 import { handleQuizAnswer } from "./quiz.js";
 import { todayStockholm } from "./time.js";
 
@@ -37,7 +37,7 @@ export interface FrenchInput {
 const FRENCH_COMMANDS = new Set([
   "/franska", "/français", "/francais",
   "/lektion", "/delprov", "/streak", "/svaga", "/uttal", "/läge", "/lage",
-  "/kurs", "/seed", "/avbryt", "/sluta"
+  "/kurs", "/seed", "/avstämning", "/avstamning", "/avbryt", "/sluta"
 ]);
 
 export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promise<boolean> {
@@ -76,6 +76,24 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
       case "/kurs":
         await io.send(await renderCourseMap(), true);
         return true;
+
+      case "/avstämning":
+      case "/avstamning": {
+        const { getCurrentModule } = await import("./curriculum.js");
+        const cur = await getCurrentModule();
+        if (!cur) {
+          await io.send("Inget att stämma av just nu — inga öppna kursdelar. Skriv /kurs för kartan.");
+          return true;
+        }
+        const cp = await buildModuleCheckpoint(cur.module, cur.theme);
+        if (!cp) {
+          await io.send(`Alla ord i ${cur.module} är redan godkända. Skriv /kurs.`);
+          return true;
+        }
+        await io.send(cp.intro, true);
+        await io.send(renderQuestion(cp.payload), true);
+        return true;
+      }
 
       case "/seed": {
         await io.send("Seedar läroplanen…");

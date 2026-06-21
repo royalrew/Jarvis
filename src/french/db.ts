@@ -90,6 +90,8 @@ export async function initFrenchDb() {
   // unlocked=false = ligger i kursen men ännu inte upplåst (progressiv frigörelse).
   // Konversationsord är alltid true så de stannar i rotationen som förr.
   await sql`ALTER TABLE fr_items ADD COLUMN IF NOT EXISTS unlocked BOOLEAN NOT NULL DEFAULT true`;
+  // mastered = lärarens dom JA: ordet sitter (bevisat både stavning OCH uttal i avstämning).
+  await sql`ALTER TABLE fr_items ADD COLUMN IF NOT EXISTS mastered BOOLEAN NOT NULL DEFAULT false`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS fr_facets (
@@ -311,20 +313,43 @@ export async function pinLeech(facetId: string, leech: boolean) {
 }
 
 /**
- * Items som nu räknas som fullt behärskade: BÅDE production OCH pronunciation
- * har nått masterytröskeln (meaning räknas separat). Källstyrd dubbel-mastery.
+ * Lärarens dom: items där läraren sagt JA (bevisat stavning + uttal i avstämning).
+ * Detta är sanningen för "behärskad", inte en FSRS-tröskel.
  */
-export async function getMasteredLemmas(masteryStability: number): Promise<string[]> {
+export async function getMasteredLemmas(): Promise<string[]> {
+  const sql = getSql();
+  const rows = await sql`SELECT lemma FROM fr_items WHERE mastered = true`;
+  return rows.map((r) => r.lemma as string);
+}
+
+/** Sätter lärarens dom (JA/NEJ) på ett ord. */
+export async function setItemMastered(lemma: string, mastered: boolean) {
+  await getSql()`UPDATE fr_items SET mastered = ${mastered} WHERE lemma = ${lemma}`;
+}
+
+/**
+ * Alla ord i en modul med facett-id för production/pronunciation + lärardomen.
+ * Underlag för att bygga en avstämning (läxförhör som tvingar både kanaler).
+ */
+export async function getModuleItems(module: string) {
   const sql = getSql();
   const rows = await sql`
-    SELECT i.lemma
+    SELECT i.id, i.lemma, i.meta, i.mastered,
+      MAX(CASE WHEN f.kind = 'production'    THEN f.id::text END) AS prod_facet,
+      MAX(CASE WHEN f.kind = 'pronunciation' THEN f.id::text END) AS pron_facet
     FROM fr_items i JOIN fr_facets f ON f.item_id = i.id
-    WHERE f.kind IN ('production','pronunciation')
-    GROUP BY i.lemma
-    HAVING MIN(f.stability) >= ${masteryStability}
-       AND COUNT(*) FILTER (WHERE f.kind IN ('production','pronunciation')) = 2
+    WHERE i.module = ${module}
+    GROUP BY i.id, i.lemma, i.meta, i.mastered, i.seq
+    ORDER BY i.seq ASC
   `;
-  return rows.map((r) => r.lemma as string);
+  return rows.map((r) => ({
+    itemId: r.id as string,
+    lemma: r.lemma as string,
+    meta: r.meta as ItemMeta,
+    mastered: Boolean(r.mastered),
+    prodFacetId: r.prod_facet as string | null,
+    pronFacetId: r.pron_facet as string | null
+  }));
 }
 
 // --------------------------------------------------------------------------

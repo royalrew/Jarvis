@@ -85,10 +85,12 @@ export interface QuizQuestion {
 }
 
 export interface QuizPayload {
-  kind: "quiz";
+  kind: "quiz" | "checkpoint";
   questions: QuizQuestion[];
   cursor: number;
   score: number;
+  /** Satt för avstämningar (modul-prov): vilken modul som bedöms. */
+  moduleId?: string;
 }
 
 export interface BuiltQuiz {
@@ -182,6 +184,67 @@ export async function buildGrandTest(): Promise<BuiltQuiz> {
   ].join("\n");
 
   return { lessonId, payload, intro };
+}
+
+// --------------------------------------------------------------------------
+// Avstämning (modul-prov) — lärarens "behärskar du denna del? Ja/Nej"
+// --------------------------------------------------------------------------
+
+export interface BuiltCheckpoint {
+  lessonId: string;
+  payload: QuizPayload;
+  intro: string;
+  moduleTheme: string;
+}
+
+/**
+ * Bygger en avstämning för en modul: varje ännu inte godkänt ord testas på
+ * BÅDE stavning (text) och uttal (röst) — för läraren ska kunna säga JA krävs
+ * att båda sitter. Returnerar null om modulen saknar ord att pröva.
+ */
+export async function buildModuleCheckpoint(moduleId: string, theme: string): Promise<BuiltCheckpoint | null> {
+  const { getModuleItems, createLesson, updateState } = await import("./db.js");
+  const items = await getModuleItems(moduleId);
+  const pending = items.filter((it) => !it.mastered && it.prodFacetId && it.pronFacetId);
+  if (pending.length === 0) return null;
+
+  const questions: QuizQuestion[] = [];
+  for (const it of pending) {
+    // Stavning (text)
+    questions.push({
+      facetId: it.prodFacetId as string,
+      lemma: it.lemma,
+      kind: "production",
+      translation: it.meta.translation,
+      prompt: `Skriv ordet för "${it.meta.translation}" på franska. ⌨️`,
+      require: "text",
+      answered: false,
+      grade: null
+    });
+    // Uttal (röst)
+    questions.push({
+      facetId: it.pronFacetId as string,
+      lemma: it.lemma,
+      kind: "pronunciation",
+      translation: it.meta.translation,
+      prompt: `Uttala ordet för "${it.meta.translation}" på franska. 🎤`,
+      require: "voice",
+      answered: false,
+      grade: null
+    });
+  }
+
+  const payload: QuizPayload = { kind: "checkpoint", moduleId, questions, cursor: 0, score: 0 };
+  const lessonId = await createLesson("quiz", todayStockholm(), `Avstämning ${moduleId}`, questions.map((q) => q.facetId), payload as unknown as Record<string, unknown>);
+  await updateState({ activeQuizId: lessonId, activeLessonId: null, chatActive: false });
+
+  const intro = [
+    `📋 *Avstämning — ${moduleId} ${theme}*`,
+    `${pending.length} ord, varje ord prövas på *stavning* (⌨️) och *uttal* (🎤).`,
+    "Läraren säger JA på ett ord först när båda sitter. /avbryt för att hoppa av."
+  ].join("\n");
+
+  return { lessonId, payload, intro, moduleTheme: theme };
 }
 
 function buildPrompt(lemma: string, translation: string, kind: FacetKind, require: Channel): string {
