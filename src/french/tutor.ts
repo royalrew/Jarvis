@@ -122,6 +122,7 @@ async function buildContext(channel: Channel, activeLessonId: string | null): Pr
   }
   const learnerSignal = typeof activeLesson?.payload?.learnerSignal === "string" ? activeLesson.payload.learnerSignal : "unknown";
   const gentleStart = activeLesson?.payload?.gentleStart === true;
+  const greetingModule = activeLesson?.payload?.greetingModule === true;
   const frenchMaxWords = Number(activeLesson?.payload?.frenchMaxWords ?? 70);
   const responseMaxWords = Number(activeLesson?.payload?.responseMaxWords ?? 10);
   const activeWords = Array.isArray(activeLesson?.payload?.activeWords)
@@ -147,6 +148,9 @@ async function buildContext(channel: Channel, activeLessonId: string | null): Pr
       `Senaste prestationssignal: ${learnerSignal}. Anpassa mängden svensk stöttning och fransk komplexitet därefter, utan att kommentera signalen.`,
       gentleStart
         ? `MIKRODOS FÖR ABSOLUT NYBÖRJARE: ditt reply får innehålla högst ${frenchMaxWords} mycket enkla franska ord och en enda fråga som kan besvaras med högst ${responseMaxWords} ord. explanation_sv ska översätta allt franskt du skriver. Kräv aldrig en hel översättning från svenska.`
+        : "",
+      greetingModule
+        ? "A1.1-HÄLSNINGAR: håll hela fortsättningen till hälsning, tack, ursäkt eller avsked. Nästa svar ska kunna bestå av en enda aktiv glosa. Fråga inte om aktiviteter och använd inte « je veux » eller andra oprövade konstruktioner."
         : "",
       activeWords.length ? `Aktiva ord att locka fram och bedöma, inte ersätta med fler nya ord: ${activeWords.join(", ")}` : "",
       lessonPhase === "recall"

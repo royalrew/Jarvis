@@ -16,7 +16,7 @@ import { generateStoryLesson } from "./llm.js";
 import { storyLessonPrompt } from "./prompts.js";
 import { CAST, TRAVEL_INTERESTS, getStory, initStoryIfNeeded, updateStory, appendBeat, summarizeRecentBeats } from "./story.js";
 import { todayStockholm } from "./time.js";
-import { lessonPedagogy } from "./pedagogy.js";
+import { lessonPedagogy, needsGentleStart } from "./pedagogy.js";
 import { getMysteryLessonContext, recordMysteryScene } from "./mystery.js";
 
 /**
@@ -56,13 +56,22 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
   let targetWords: string[] = [];
   let targetVocabulary: LessonVocabulary[] = [];
   let levelLabel = "A1 nybörjare";
-  let gentleStart = story.day === 0;
+  let gentleStart = false;
+  let greetingModule = false;
   if (current) {
     const items = await getModuleItems(current.module);
     levelLabel = `${current.module.split(".")[0]} – ${current.theme}`;
-    gentleStart = current.module === "A1.1" && story.day < 3;
+    greetingModule = current.module === "A1.1";
+    gentleStart = needsGentleStart(current.module, items);
     const policy = lessonPedagogy(levelLabel, gentleStart);
-    const selected = items.filter((it) => !it.mastered).slice(0, policy.targetWords);
+    const selected = items
+      .filter((it) => !it.mastered)
+      .sort((a, b) => {
+        const aEvidence = a.meaningStability + Math.max(a.productionStability, a.pronunciationStability);
+        const bEvidence = b.meaningStability + Math.max(b.productionStability, b.pronunciationStability);
+        return aEvidence - bEvidence;
+      })
+      .slice(0, policy.targetWords);
     targetWords = selected.map((it) => `${it.lemma} (${it.meta.translation})`);
     targetVocabulary = selected.map((it) => vocabularyItem(it.lemma, it.meta));
   } else {
@@ -76,14 +85,17 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
 
   const policy = lessonPedagogy(levelLabel, gentleStart);
   const leeches = await getLeechFacets(policy.leechWords);
-  const mysteryContext = await getMysteryLessonContext(levelLabel, story.day);
+  const rawMysteryContext = await getMysteryLessonContext(levelLabel, story.day);
+  const mysteryContext = gentleStart
+    ? { ...rawMysteryContext, hook: "Mysteriet väntar tills de första franska grunderna sitter.", knownClues: [], eligibleClue: null, mustReveal: false }
+    : rawMysteryContext;
 
   // Pinna de leeches vi väver in, så de räknas som dagens fokus.
   for (const l of leeches) await pinLeech(l.id, true);
   const leechWords = leeches.map((l) => l.lemma);
 
   const lesson = await generateStoryLesson({
-    systemPrompt: storyLessonPrompt(levelLabel, CAST, TRAVEL_INTERESTS, policy),
+    systemPrompt: storyLessonPrompt(levelLabel, CAST, TRAVEL_INTERESTS, policy, greetingModule),
     premise: story.premise,
     recentBeats: summarizeRecentBeats(story),
     location: story.location,
@@ -95,6 +107,7 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     sentenceStarters: policy.sentenceStarters,
     wordBankMax: policy.wordBankMax,
     gentleStart: policy.gentleStart,
+    greetingModule,
     mysteryContext
   });
 
@@ -138,6 +151,7 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
     missionSv: lesson.mission_sv,
     levelLabel,
     gentleStart,
+    greetingModule,
     frenchMaxWords: policy.frenchMaxWords,
     responseMaxWords: policy.responseMaxWords,
     translateAllFrench: policy.translateAllFrench,

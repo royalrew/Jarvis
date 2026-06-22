@@ -210,6 +210,7 @@ export interface StoryLessonInput {
   sentenceStarters: number;
   wordBankMax: number;
   gentleStart: boolean;
+  greetingModule: boolean;
   mysteryContext: MysteryLessonContext;
 }
 
@@ -265,11 +266,12 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     input.sentenceStarters,
     input.wordBankMax,
     input.gentleStart,
+    input.greetingModule,
     [...input.targetWords, ...input.leechWords]
   );
 }
 
-function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, maxWordBank: number, gentleStart: boolean, activeWords: string[]): StoryLesson {
+function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, maxWordBank: number, gentleStart: boolean, greetingModule: boolean, activeWords: string[]): StoryLesson {
   const o = (obj ?? {}) as Record<string, unknown>;
   const place = (o.place ?? {}) as Record<string, unknown>;
   const scene = (o.scene ?? {}) as Record<string, unknown>;
@@ -290,8 +292,10 @@ function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStar
     reply: typeof o.reply === "string" && o.reply.trim() ? o.reply.trim() : "On continue le voyage ?",
     explanation_sv: typeof o.explanation_sv === "string" && o.explanation_sv.trim() ? o.explanation_sv.trim() : undefined,
     culture_sv: typeof o.culture_sv === "string" ? o.culture_sv.trim() : "",
-    mission_sv: gentleStart
-      ? "Svara personen med dagens enda glosa. Du behöver inte bilda en mening."
+    mission_sv: greetingModule
+      ? gentleStart
+        ? "Svara personen med dagens enda glosa. Du behöver inte bilda en mening."
+        : "Välj en av dagens hälsningsglosor och använd den som ditt svar."
       : typeof o.mission_sv === "string" && o.mission_sv.trim() ? o.mission_sv.trim() : "Svara på franska och se vad som händer.",
     response_support: {
       instruction_sv: gentleStart
@@ -299,13 +303,13 @@ function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStar
         : typeof support.instruction_sv === "string" && support.instruction_sv.trim()
         ? support.instruction_sv.trim()
         : "Svara med en kort mening på franska.",
-      sentence_starters: gentleStart && firstActiveWord
-        ? [`${firstActiveWord}…`]
+      sentence_starters: greetingModule
+        ? activeWords.slice(0, maxSentenceStarters).map((word) => `${word.replace(/\s*\([^)]*\)$/, "")}…`)
         : generatedStarters.length
         ? generatedStarters
         : fallbackStarters.slice(0, maxSentenceStarters),
-      word_bank: gentleStart
-        ? activeWords.slice(0, 1)
+      word_bank: greetingModule
+        ? activeWords.slice(0, maxWordBank)
         : generatedWordBank.length
         ? generatedWordBank
         : activeWords.slice(0, maxWordBank),

@@ -14,6 +14,21 @@ export interface LessonPedagogy {
   guidance: string;
 }
 
+export interface PracticeEvidence {
+  meaningStability: number;
+  productionStability: number;
+  pronunciationStability: number;
+}
+
+/** Mjukstarten släpper först när tre hälsningsuttryck har förståtts och producerats. */
+export function needsGentleStart(moduleId: string | null, items: PracticeEvidence[]): boolean {
+  if (moduleId !== "A1.1") return false;
+  const demonstrated = items.filter((item) =>
+    item.meaningStability >= 0.5 && Math.max(item.productionStability, item.pronunciationStability) >= 0.5
+  ).length;
+  return demonstrated < 3;
+}
+
 /** Deterministisk belastningsbudget. Längre lektion får aldrig betyda ordlavin. */
 export function lessonPedagogy(levelLabel: string, gentleStart = false): LessonPedagogy {
   const level = levelLabel.match(/\b(A1|A2|B1|B2|C1|C2)\b/i)?.[1].toUpperCase() ?? "A1";

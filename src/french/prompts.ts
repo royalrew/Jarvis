@@ -41,7 +41,7 @@ export function tutorSystemPrompt(mode: Mode, context: string): string {
  * (gärna 1a/2a världskriget). Franskan hålls på elevens nivå; den rikare
  * historien levereras på svenska (mer franska ju högre nivå).
  */
-export function storyLessonPrompt(levelLabel: string, cast: string, travelInterests: string, pedagogy: LessonPedagogy): string {
+export function storyLessonPrompt(levelLabel: string, cast: string, travelInterests: string, pedagogy: LessonPedagogy, greetingModule: boolean): string {
   return [
     "Du driver nästa dynamiska scen i Jimmys pågående liv och resa i Frankrike. Det är en sammanhängande värld, inte en fast kursrutt eller ett dialogträd.",
     `Karaktärer: ${cast}`,
@@ -50,6 +50,9 @@ export function storyLessonPrompt(levelLabel: string, cast: string, travelIntere
     `Pedagogisk belastningsbudget: ${pedagogy.guidance} Högst ${pedagogy.targetWords} aktiva målord, ${pedagogy.leechWords} svagt ord och ${pedagogy.maxNewItems} helt nya aktiva ord.`,
     pedagogy.gentleStart
       ? "ABSOLUT MJUKSTART: Eleven kan ingen franska. Den sista repliken ska vara en enkel hälsning eller situation där dagens ENDA målord är ett naturligt och fullständigt svar. Fråga inte vad han vill göra, be honom inte välja aktivitet och kräv ingen mening. Använd inga svarskonstruktioner som « je veux »."
+      : "",
+    greetingModule
+      ? "A1.1-HÄLSNINGAR: hela den spelbara situationen ska handla om att hälsa, tacka, be om ursäkt eller säga hej då. Uppgiften ska kunna lösas med exakt en av dagens glosor. Använd inte café-, resevals- eller aktivitetsfrågor och introducera inga konstruktioner som « je veux » eller « allons »."
       : "",
     "",
     "VIKTIGAST: 'reply' är själva scenen — en dialog på franska — och får ALDRIG vara tom eller bara en fras. Det är hjärtat i lektionen.",

@@ -362,7 +362,10 @@ export async function getModuleItems(module: string) {
   const rows = await sql`
     SELECT i.id, i.lemma, i.meta, i.mastered,
       MAX(CASE WHEN f.kind = 'production'    THEN f.id::text END) AS prod_facet,
-      MAX(CASE WHEN f.kind = 'pronunciation' THEN f.id::text END) AS pron_facet
+      MAX(CASE WHEN f.kind = 'pronunciation' THEN f.id::text END) AS pron_facet,
+      MAX(CASE WHEN f.kind = 'meaning'       THEN f.stability END) AS meaning_stability,
+      MAX(CASE WHEN f.kind = 'production'    THEN f.stability END) AS production_stability,
+      MAX(CASE WHEN f.kind = 'pronunciation' THEN f.stability END) AS pronunciation_stability
     FROM fr_items i JOIN fr_facets f ON f.item_id = i.id
     WHERE i.module = ${module}
     GROUP BY i.id, i.lemma, i.meta, i.mastered, i.seq
@@ -374,7 +377,10 @@ export async function getModuleItems(module: string) {
     meta: r.meta as ItemMeta,
     mastered: Boolean(r.mastered),
     prodFacetId: r.prod_facet as string | null,
-    pronFacetId: r.pron_facet as string | null
+    pronFacetId: r.pron_facet as string | null,
+    meaningStability: Number(r.meaning_stability ?? 0),
+    productionStability: Number(r.production_stability ?? 0),
+    pronunciationStability: Number(r.pronunciation_stability ?? 0)
   }));
 }
 

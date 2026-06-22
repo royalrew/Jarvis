@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { lessonPedagogy } from "./pedagogy.js";
+import { lessonPedagogy, needsGentleStart } from "./pedagogy.js";
 
 test("första scenen har minimal aktiv belastning", () => {
   const policy = lessonPedagogy("A1 – Hälsningar", true);
@@ -29,4 +29,12 @@ test("ordbudgeten växer kontrollerat med nivån", () => {
 
 test("okänd nivå faller säkert tillbaka till A1", () => {
   assert.deepEqual(lessonPedagogy("nybörjare"), lessonPedagogy("A1"));
+});
+
+test("mjukstart styrs av demonstrerad förmåga, inte antal scener", () => {
+  const weak = { meaningStability: 0, productionStability: 0, pronunciationStability: 0 };
+  const known = { meaningStability: 1, productionStability: 1, pronunciationStability: 0 };
+  assert.equal(needsGentleStart("A1.1", [known, known, weak]), true);
+  assert.equal(needsGentleStart("A1.1", [known, known, known]), false);
+  assert.equal(needsGentleStart("A1.2", [weak]), false);
 });
