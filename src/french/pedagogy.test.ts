@@ -4,15 +4,15 @@ import { lessonPedagogy, needsGentleStart } from "./pedagogy.js";
 
 test("första scenen har minimal aktiv belastning", () => {
   const policy = lessonPedagogy("A1 – Hälsningar", true);
-  assert.equal(policy.targetWords, 1);
+  assert.equal(policy.targetWords, 3);
   assert.equal(policy.leechWords, 0);
   assert.equal(policy.maxNewItems, 0);
-  assert.equal(policy.sentenceStarters, 1);
-  assert.equal(policy.frenchMaxWords, 12);
+  assert.equal(policy.sentenceStarters, 3);
+  assert.equal(policy.frenchMaxWords, 24);
   assert.equal(policy.responseMaxWords, 4);
   assert.equal(policy.translateAllFrench, true);
   assert.equal(policy.gentleStart, true);
-  assert.equal(policy.wordBankMax, 1);
+  assert.equal(policy.wordBankMax, 3);
   assert.ok(policy.frenchMaxWords < lessonPedagogy("A1").frenchMaxWords);
 });
 

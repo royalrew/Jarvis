@@ -187,7 +187,7 @@ export async function maybeHandleFrench(input: FrenchInput, io: FrenchIO): Promi
     const gentleStart = lesson?.payload?.gentleStart === true;
     const recall = enterRecall
       ? gentleStart
-        ? `\n\n🎒 *Ett sista litet steg*\nSkriv eller säg dagens franska ord en gång.${recallWords.length ? ` Ledtråd: det betyder ${activeWords[0]?.match(/\(([^)]*)\)/)?.[1] ?? "dagens uttryck"}.` : ""}`
+        ? `\n\n🎒 *Ett sista litet steg*\nSkriv eller säg en av dagens tre glosor som passar scenen.${recallWords.length ? ` Välj mellan: *${recallWords.join(" · ")}*.` : ""}`
         : `\n\n🎒 *Innan du går vidare*\nBerätta mycket kort på franska vad som hände eller vad du gjorde.${recallWords.length ? ` Försök få med: *${recallWords.join(" · ")}*.` : ""}`
       : "";
     const ending = lessonComplete ? "\n\n✅ *Kapitel klart.* Orden återkommer senare i resan, med mindre hjälp." : "";

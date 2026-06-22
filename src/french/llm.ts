@@ -209,6 +209,7 @@ export interface StoryLessonInput {
   maxNewItems: number;
   sentenceStarters: number;
   wordBankMax: number;
+  frenchMaxWords: number;
   gentleStart: boolean;
   greetingModule: boolean;
   mysteryContext: MysteryLessonContext;
@@ -240,35 +241,79 @@ export async function generateStoryLesson(input: StoryLessonInput): Promise<Stor
     `Detta är dag ${input.day + 1} på resan.`
   ].filter(Boolean).join("\n");
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "content-type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
-      temperature: 0.8,
-      max_tokens: 3000,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: input.systemPrompt },
-        { role: "user", content: userContext }
-      ]
-    })
-  });
+  const requestLesson = async (correction?: string): Promise<StoryLesson> => {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: correction ? 0.4 : 0.8,
+        max_tokens: 3000,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: input.systemPrompt },
+          ...(correction ? [{ role: "system", content: correction }] : []),
+          { role: "user", content: userContext }
+        ]
+      })
+    });
+    if (!response.ok) throw new Error(`OpenAI (story-lektion) svarade ${response.status}: ${await response.text()}`);
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    return normalizeStoryLesson(
+      JSON.parse(data.choices?.[0]?.message?.content || "{}"),
+      input.maxNewItems,
+      input.sentenceStarters,
+      input.wordBankMax,
+      input.gentleStart,
+      input.greetingModule,
+      [...input.targetWords, ...input.leechWords]
+    );
+  };
 
-  if (!response.ok) {
-    throw new Error(`OpenAI (story-lektion) svarade ${response.status}: ${await response.text()}`);
+  const lesson = await requestLesson();
+  const violations = validateBeginnerLesson(lesson, input);
+  if (!violations.length) return lesson;
+  const rewritten = await requestLesson([
+    "FÖRRA UTKASTET BRÖT MOT NYBÖRJARREGLERNA OCH SKA SKRIVAS OM HELT.",
+    `Fel: ${violations.join("; ")}.`,
+    `Använd bara dagens glosor som aktivt elevspråk: ${input.targetWords.join(", ")}.`,
+    "Avsluta med en hälsningssituation som kan besvaras med exakt en av glosorna. Inga aktivitetsval, inget mysterium och inga konstruktioner med je veux/nous allons."
+  ].join("\n"));
+  return validateBeginnerLesson(rewritten, input).length ? safeGreetingLesson(rewritten, input) : rewritten;
+}
+
+function validateBeginnerLesson(lesson: StoryLesson, input: StoryLessonInput): string[] {
+  if (!input.greetingModule) return [];
+  const violations: string[] = [];
+  const frenchWords = lesson.reply.match(/[A-Za-zÀ-ÖØ-öø-ÿŒœ'-]+/g)?.length ?? 0;
+  if (frenchWords > input.frenchMaxWords) violations.push(`${frenchWords} franska ord, max ${input.frenchMaxWords}`);
+  const reply = lesson.reply.toLocaleLowerCase("fr");
+  const banned = ["je veux", "nous allons", "que veux", "qu'est-ce que", "qu’est-ce que", "que penses-tu"];
+  if (banned.some((phrase) => reply.includes(phrase))) violations.push("för avancerad eller öppen fråga");
+  const targetLemmas = input.targetWords.map((word) => word.replace(/\s*\([^)]*\)$/, "").toLocaleLowerCase("fr"));
+  if (!targetLemmas.some((lemma) => reply.includes(lemma))) violations.push("dagens glosor saknas i scenen");
+  if (input.gentleStart) {
+    const allText = `${lesson.setting_sv}\n${lesson.reply}\n${lesson.culture_sv}`.toLowerCase();
+    if (["carnet bleu", "anteckningsbok", "mysteriet"].some((term) => allText.includes(term))) violations.push("mysteriet introducerades under mjukstart");
   }
+  return violations;
+}
 
-  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return normalizeStoryLesson(
-    JSON.parse(data.choices?.[0]?.message?.content || "{}"),
-    input.maxNewItems,
-    input.sentenceStarters,
-    input.wordBankMax,
-    input.gentleStart,
-    input.greetingModule,
-    [...input.targetWords, ...input.leechWords]
-  );
+/** Sista skyddsnätet om även omskrivningen bryter mot nybörjarkontraktet. */
+function safeGreetingLesson(base: StoryLesson, input: StoryLessonInput): StoryLesson {
+  const vocabulary = input.targetWords.slice(0, 3).map((word) => {
+    const match = word.match(/^(.*?)\s*\((.*)\)$/);
+    return { lemma: match?.[1]?.trim() || word, translation: match?.[2]?.trim() || "dagens uttryck" };
+  });
+  const lines = vocabulary.map((item, index) => `${index === 1 ? "Personen" : "Anna"} : ${item.lemma} !`);
+  return {
+    ...base,
+    setting_sv: `På ${input.location ?? "en plats i Frankrike"} möter Jimmy en person. De hälsar kort på varandra medan Anna visar hur dagens tre uttryck används.`,
+    reply: lines.join("\n"),
+    explanation_sv: vocabulary.map((item) => `*${item.lemma}* betyder ${item.translation}.`).join("\n"),
+    culture_sv: "I Frankrike väljer man hälsning efter situation och tid på dagen.",
+    mystery: null
+  };
 }
 
 function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStarters: number, maxWordBank: number, gentleStart: boolean, greetingModule: boolean, activeWords: string[]): StoryLesson {
@@ -294,12 +339,12 @@ function normalizeStoryLesson(obj: unknown, maxNewItems: number, maxSentenceStar
     culture_sv: typeof o.culture_sv === "string" ? o.culture_sv.trim() : "",
     mission_sv: greetingModule
       ? gentleStart
-        ? "Svara personen med dagens enda glosa. Du behöver inte bilda en mening."
+        ? "Välj den av dagens tre glosor som passar situationen och använd den som svar. Du behöver inte bilda en mening."
         : "Välj en av dagens hälsningsglosor och använd den som ditt svar."
       : typeof o.mission_sv === "string" && o.mission_sv.trim() ? o.mission_sv.trim() : "Svara på franska och se vad som händer.",
     response_support: {
       instruction_sv: gentleStart
-        ? "Skriv eller säg bara dagens glosa."
+        ? "Skriv eller säg en av dagens tre glosor."
         : typeof support.instruction_sv === "string" && support.instruction_sv.trim()
         ? support.instruction_sv.trim()
         : "Svara med en kort mening på franska.",

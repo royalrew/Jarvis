@@ -36,17 +36,17 @@ export function lessonPedagogy(levelLabel: string, gentleStart = false): LessonP
     return {
       level,
       gentleStart: true,
-      targetWords: 1,
+      targetWords: 3,
       leechWords: 0,
       maxNewItems: 0,
-      sentenceStarters: 1,
-      frenchMinLines: 2,
-      frenchMaxLines: 3,
-      frenchMaxWords: 12,
-      wordBankMax: 1,
+      sentenceStarters: 3,
+      frenchMinLines: 3,
+      frenchMaxLines: 5,
+      frenchMaxWords: 24,
+      wordBankMax: 3,
       responseMaxWords: 4,
       translateAllFrench: true,
-      guidance: "Absolut nybörjare: berättelsen får vara rik på svenska men franskan är en mikrodos. Eleven ska förstå varje franskt ord innan han svarar."
+      guidance: "Absolut nybörjare: tre tydliga glosor åt gången. Berättelsen får vara rik på svenska, men all aktiv franska ska byggas av dagens glosor och förstås innan eleven svarar."
     };
   }
 

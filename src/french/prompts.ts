@@ -49,7 +49,7 @@ export function storyLessonPrompt(levelLabel: string, cast: string, travelIntere
     `Elevens nivå: ${levelLabel}. Franskan i 'reply' ska ligga på den nivån — enkel och tydlig på A1.`,
     `Pedagogisk belastningsbudget: ${pedagogy.guidance} Högst ${pedagogy.targetWords} aktiva målord, ${pedagogy.leechWords} svagt ord och ${pedagogy.maxNewItems} helt nya aktiva ord.`,
     pedagogy.gentleStart
-      ? "ABSOLUT MJUKSTART: Eleven kan ingen franska. Den sista repliken ska vara en enkel hälsning eller situation där dagens ENDA målord är ett naturligt och fullständigt svar. Fråga inte vad han vill göra, be honom inte välja aktivitet och kräv ingen mening. Använd inga svarskonstruktioner som « je veux »."
+      ? "ABSOLUT MJUKSTART: Eleven kan ingen franska men ska få tre glosor. Den sista repliken ska vara en enkel situation där EN av dagens tre glosor är ett naturligt och fullständigt svar. Scenen får använda dagens tre glosor men får inte kräva annan aktiv franska. Fråga inte vad han vill göra, be honom inte välja aktivitet och använd inga konstruktioner som « je veux »."
       : "",
     greetingModule
       ? "A1.1-HÄLSNINGAR: hela den spelbara situationen ska handla om att hälsa, tacka, be om ursäkt eller säga hej då. Uppgiften ska kunna lösas med exakt en av dagens glosor. Använd inte café-, resevals- eller aktivitetsfrågor och introducera inga konstruktioner som « je veux » eller « allons »."

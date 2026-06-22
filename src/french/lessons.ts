@@ -97,15 +97,16 @@ export async function buildDailyLesson(): Promise<BuiltLesson> {
   const lesson = await generateStoryLesson({
     systemPrompt: storyLessonPrompt(levelLabel, CAST, TRAVEL_INTERESTS, policy, greetingModule),
     premise: story.premise,
-    recentBeats: summarizeRecentBeats(story),
+    recentBeats: gentleStart ? "(tidigare mysterium och resplan är pausade medan hälsningsgrunderna tränas)" : summarizeRecentBeats(story),
     location: story.location,
-    nextHint: story.nextHint,
+    nextHint: gentleStart ? null : story.nextHint,
     day: story.day,
     targetWords,
     leechWords,
     maxNewItems: policy.maxNewItems,
     sentenceStarters: policy.sentenceStarters,
     wordBankMax: policy.wordBankMax,
+    frenchMaxWords: policy.frenchMaxWords,
     gentleStart: policy.gentleStart,
     greetingModule,
     mysteryContext
